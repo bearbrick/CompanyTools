@@ -100,7 +100,7 @@
                     <div class="table-identity"><h1>@table.Label</h1><div class="physical-name"><span class="mono" title="@($"{table.Schema}.{table.Name}")">@table.Schema.@table.Name</span><button class="icon-button" aria-label="编辑表信息" disabled="@(!CanDesign)" @onclick='() => modal = "table"'><Icon Name="pencil" /></button></div></div>
                     <div class="save-actions"><span class="save-state @(dirty ? "unsaved" : "")"><span class="state-dot"></span>@(dirty ? "有未保存修改" : "所有更改已保存")</span><button class="text-button" @onclick="CheckDesign"><Icon Name="shield-check" /> 检查设计</button><button class="text-button" disabled="@(!dirty)" @onclick="Refresh">撤销</button><button class="primary save-button" disabled="@(!CanDesign)" @onclick="Save"><Icon Name="floppy" /> 保存设计 <kbd>Ctrl S</kbd></button></div>
                 </div>
-                <div class="table-meta"><span class="table-note" title="@table.Comment">备注 <b>@(table.Comment == "" ? "暂无备注" : table.Comment)</b></span><button class="text-button muted" disabled="@(!CanDesign)" @onclick='() => modal = "table"'>编辑信息 <Icon Name="pencil" /></button><button class="text-button duplicate-table" disabled="@(!CanDesign)" @onclick="DuplicateTable"><Icon Name="copy" /> 复制表结构</button></div>
+                <div class="table-meta"><span class="table-note" title="@table.Comment">备注 <b>@(table.Comment == "" ? "暂无备注" : table.Comment)</b></span><button class="text-button muted" disabled="@(!CanDesign)" @onclick='() => modal = "table"'>编辑信息 <Icon Name="pencil" /></button><button class="text-button duplicate-table" disabled="@(!CanDesign)" @onclick="OpenTableCopy"><Icon Name="copy" /> 复制表</button></div>
             </section>
             <nav class="tabs" aria-label="表设计选项">
                 <button class="@(tab == "fields" ? "active" : "")" @onclick='() => OpenTab("fields")'>字段定义 <span>@table.Columns.Count</span></button>
@@ -214,10 +214,15 @@
 {
 <div class="modal-backdrop">
 <section class="modal @(modal == "column" ? "drawer" : "")" role="dialog" aria-modal="true" aria-label="编辑窗口">
-<div class="modal-heading"><div><span class="eyebrow">DB STUDIO</span><h2>@(modal switch { "table" => "表信息", "column" => "字段高级设置", "project" => "创建项目", "settings" => "项目设置", "paste" => "批量粘贴字段", "user" => "成员设置", "role" => "角色权限", "password" => "修改密码", "validation" => "设计检查", "import" => "导入项目备份", _ => "" })</h2></div><button class="icon-button" aria-label="关闭窗口" @onclick='() => modal = ""'><Icon Name="x-lg" /></button></div>
+<div class="modal-heading"><div><span class="eyebrow">DB STUDIO</span><h2>@(modal switch { "table" => "表信息", "copy-table" => "复制表", "column" => "字段高级设置", "project" => "创建项目", "settings" => "项目设置", "paste" => "批量粘贴字段", "user" => "成员设置", "role" => "角色权限", "password" => "修改密码", "validation" => "设计检查", "import" => "导入项目备份", _ => "" })</h2></div><button class="icon-button" aria-label="关闭窗口" @onclick='() => modal = ""'><Icon Name="x-lg" /></button></div>
 @if (modal == "settings" && project != null)
 {
     <ProjectSettings Project="project" Principal="principal" Saved="ProjectSettingsSaved" InitialSection="@settingsSection" />
+}
+@if (modal == "copy-table" && tableCopySource != null && tableCopyOptions != null)
+{
+    <TableCopyForm Source="tableCopySource" Options="tableCopyOptions" Modules="ModuleOptions"
+                   HasUnsavedChanges="dirty" Error="@tableCopyError" Create="CreateTableCopy" Cancel='() => modal = ""' />
 }
 @if (modal == "import")
 {

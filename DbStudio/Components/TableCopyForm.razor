@@ -1,0 +1,25 @@
+@* 表基本信息使用独立模型，关闭窗口不会修改当前表草稿。 *@
+<form @onsubmit="SubmitAsync" @onsubmit:preventDefault>
+    <p class="muted">来源：<span class="mono">@Source.Schema.@Source.Name</span> · @Source.Columns.Count 个字段</p>
+    <p class="muted">字段顺序及全部配置、索引、外键和检查约束一并复制。约束自动重新命名，自引用外键指向新表。</p>
+    @if (HasUnsavedChanges)
+    {
+        <p class="settings-notice" role="status">副本包含当前未保存的编辑；创建后原表仍保留其已保存版本。</p>
+    }
+    <div class="form-grid">
+        <label>新表名<input class="mono" aria-label="新表名" @bind="Options.Name" @bind:event="oninput" maxlength="128" required /></label>
+        <label>定义名<input aria-label="新表定义名" @bind="Options.Label" @bind:event="oninput" /></label>
+        <label>架构<input class="mono" aria-label="新表架构" @bind="Options.Schema" @bind:event="oninput" maxlength="128" required /></label>
+        <label>所属模块<StudioSelect Label="新表所属模块" @bind-Value="Options.Module" Items="Modules" AllowCustom="true" SearchPlaceholder="选择模块或输入新模块…" /></label>
+        <label class="wide">备注<textarea aria-label="新表备注" @bind="Options.Comment" @bind:event="oninput" rows="3"></textarea></label>
+    </div>
+    @if (Error != "")
+    {
+        <p class="settings-error table-copy-error" role="alert">@Error</p>
+    }
+    <div class="modal-footer">
+        <span class="muted">创建后自动保存到当前项目。</span>
+        <button type="button" @onclick="Cancel">取消</button>
+        <button type="submit" class="primary" disabled="@(submitting || string.IsNullOrWhiteSpace(Options.Name) || string.IsNullOrWhiteSpace(Options.Schema))"><Icon Name="copy" /> 创建表</button>
+    </div>
+</form>

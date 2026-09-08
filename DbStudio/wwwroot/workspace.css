@@ -105,3 +105,24 @@
 .warning-raw pre{padding:12px;background:#f7f8fa;color:#40536c;max-height:220px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.6 Consolas,monospace}
 /* 反推预览：默认聚焦变化，结构前后值允许长名称和表达式换行。 */
 .reverse-filters{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin:16px 0}.reverse-filters>label{min-width:180px;margin:0}.reverse-filters>label:nth-child(2){flex:1}.reverse-list{display:grid;gap:10px;max-height:560px;overflow:auto}.reverse-row{border:1px solid #dfe7f2;border-radius:7px;padding:14px 16px}.reverse-row-heading{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.reverse-row-heading strong{overflow-wrap:anywhere}.reverse-state{font-size:12px;padding:3px 8px;border-radius:5px;white-space:nowrap}.reverse-state.changed{color:#8a5719;background:#fff4df}.reverse-state.new{color:#1958ac;background:#eaf2ff}.reverse-state.same{color:#54715e;background:#edf5ef}.reverse-row details{margin-top:10px}.reverse-row summary{cursor:pointer;color:#2258aa;font-size:13px}.reverse-row p{margin:8px 0 0}.reverse-details{overflow:auto;margin-top:10px}.reverse-details pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.6 Consolas,'Microsoft YaHei',monospace;margin:0;max-width:450px}.reverse-details td{vertical-align:top}.reverse-filters button{white-space:nowrap}
+/* 字段定义中的类型与参数列统一居中；下拉箭头独立定位，避免挤偏类型文字。 */
+.field-grid th:nth-child(n+5):nth-child(-n+11),
+.field-grid td:nth-child(n+5):nth-child(-n+11),
+.field-grid td:nth-child(n+5):nth-child(-n+11) > input:not([type=checkbox]) {
+    text-align: center;
+}
+.field-grid .type-picker .select-trigger {
+    position: relative;
+    justify-content: center;
+    padding-left: 24px;
+    padding-right: 24px;
+}
+.field-grid .type-picker .select-value {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+}
+.field-grid .type-picker .select-trigger > .icon {
+    position: absolute;
+    right: 9px;
+}

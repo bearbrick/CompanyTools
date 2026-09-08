@@ -1,0 +1,6 @@
+/* 多项结构校验错误逐行呈现，保留新表信息供用户修正。 */
+.table-copy-error {
+    white-space: pre-wrap;
+    max-height: 180px;
+    overflow: auto;
+}
