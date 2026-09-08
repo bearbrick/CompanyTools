@@ -1,0 +1,64 @@
+<section class="tools-result reverse-preview">
+    <div class="section-title">
+        <div><h2>反推差异预览</h2><p class="muted">已读取 @Preview.Tables.Count 张表 · 有变化 @Preview.ChangedCount · 数据库独有 @Preview.NewCount · 无变化 @Preview.UnchangedCount</p></div>
+        <button class="primary" disabled="@(!CanApply || selected.Count == 0)" @onclick="() => Apply.InvokeAsync(selected.ToList())">合并选中的 @selected.Count 张表</button>
+    </div>
+    <p class="muted">同名表保留定义名、设计备注和模块。数据库独有的表默认不选；仅在设计中的 @Preview.DesignOnlyCount 张表继续保留。此操作只修改 Studio 设计。</p>
+    <div class="reverse-filters">
+        <label>筛选<StudioSelect Label="反推差异分类" @bind-Value="filter" Items="Filters" /></label>
+        <label>搜索表名<input aria-label="搜索反推表" @bind="search" @bind:event="oninput" placeholder="物理表名或定义名" /></label>
+        <button @onclick="SelectVisible" disabled="@(!CanApply)">选择当前可合并项</button>
+        <button @onclick="() => selected.Clear()">清空选择</button>
+    </div>
+    @if (Preview.ChangedCount + Preview.NewCount == 0) { <p class="settings-notice" role="status">没有需要合并的结构变化。</p> }
+    <div class="reverse-list">
+    @foreach (var row in Visible)
+    {
+        <article class="reverse-row" @key="row.SourceId">
+            <div class="reverse-row-heading">
+                <input type="checkbox" aria-label="@("选择 " + row.Table.Schema + "." + row.Table.Name)" disabled="@(!CanApply || row.Status == "无变化")" checked="@selected.Contains(row.SourceId)" @onchange="e => Toggle(row.SourceId, (bool)e.Value!)" />
+                <span class="reverse-state @(row.Status == "有变化" ? "changed" : row.Status == "数据库独有" ? "new" : "same")">@row.Status</span>
+                <strong class="mono">@row.Table.Schema.@row.Table.Name</strong><span class="muted">@row.Table.Label</span>
+            </div>
+            @if (row.Status == "有变化")
+            {
+                <details><summary>查看 @row.Differences.Count 项变化</summary><div class="reverse-details"><table class="list-table"><thead><tr><th>字段 / 对象</th><th>变化属性</th><th>当前设计</th><th>数据库 / 合并后</th></tr></thead><tbody>
+                    @foreach (var difference in row.Differences) { <tr><td class="mono">@difference.Object</td><td>@difference.Property</td><td><pre>@Display(difference.Before)</pre></td><td><pre>@Display(difference.After)</pre></td></tr> }
+                </tbody></table></div></details>
+            }
+            else if (row.Status == "数据库独有")
+            {
+                <p class="muted">设计中不存在。勾选后将加入 @row.Table.Columns.Count 个字段、@row.Table.Indexes.Count 个索引和 @row.Table.ForeignKeys.Count 条外键；不会修改实际数据库。</p>
+                <details><summary>查看将加入的字段</summary><div class="reverse-details"><table class="list-table"><thead><tr><th>字段</th><th>定义名</th><th>类型</th><th>允许空值</th></tr></thead><tbody>
+                    @foreach (var c in row.Table.Columns) { <tr><td class="mono">@c.Name</td><td>@c.Label</td><td class="mono">@SqlServerDdl.DataType(c)</td><td>@(c.Nullable ? "是" : "否")</td></tr> }
+                </tbody></table></div></details>
+            }
+            else { <p class="muted">与当前设计结构一致，无需合并。</p> }
+        </article>
+    }
+    @if (!Visible.Any()) { <p class="muted">当前筛选没有匹配的表。</p> }
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public ReversePreview Preview { get; set; } = default!;
+    [Parameter] public bool CanApply { get; set; }
+    [Parameter] public EventCallback<List<string>> Apply { get; set; }
+    private ReversePreview? previous;
+    private HashSet<string> selected = [];
+    private string filter = "pending", search = "";
+    private static readonly List<SelectOption> Filters = [new("pending", "需要处理"), new("有变化", "有变化"), new("数据库独有", "数据库独有"), new("无变化", "无变化"), new("all", "全部")];
+    private IEnumerable<ReverseTableChange> Visible => Preview.Tables.Where(t => (filter == "all" || (filter == "pending" ? t.Status != "无变化" : t.Status == filter)) && (t.Table.Name.Contains(search, StringComparison.OrdinalIgnoreCase) || t.Table.Label.Contains(search, StringComparison.OrdinalIgnoreCase)));
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(previous, Preview)) return;
+        previous = Preview;
+        selected = Preview.Tables.Where(t => t.Status == "有变化").Select(t => t.SourceId).ToHashSet();
+        filter = "pending";
+        search = "";
+    }
+    private void Toggle(string id, bool value) { if (value) selected.Add(id); else selected.Remove(id); }
+    private void SelectVisible() { foreach (var row in Visible.Where(t => t.Status != "无变化")) selected.Add(row.SourceId); }
+    private static string Display(string value) => value == "" ? "（未设置）" : value;
+}

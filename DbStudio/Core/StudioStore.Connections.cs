@@ -177,8 +177,9 @@ public sealed partial class StudioStore
         return ReadProject(db, projectId);
     }
 
-    /// <summary>将反推结构合并到当前项目，保留已有表 ID、模块与业务名称；不删除仅存在于设计的表。</summary>
-    public DesignProject ApplyDatabaseSnapshot(ClaimsPrincipal principal, string projectId, int revision, DatabaseSnapshot snapshot)
+    /// <summary>按预览规则合并所选变化，保留业务元数据；不删除设计独有表，也不覆盖无变化表。</summary>
+    /// <param name="selectedTableIds">本次反推的表 ID；空集合不合并，null 兼容原有全量调用。</param>
+    public DesignProject ApplyDatabaseSnapshot(ClaimsPrincipal principal, string projectId, int revision, DatabaseSnapshot snapshot, IReadOnlyCollection<string>? selectedTableIds = null)
     {
         lock (gate)
         {
@@ -190,42 +191,13 @@ public sealed partial class StudioStore
             using var db = Open();
             using var tx = db.BeginTransaction();
             var project = ReadProject(db, projectId);
-            var incoming = ModelJson.Clone(snapshot.Project);
-            var ids = incoming.Tables.ToDictionary(t => t.Id, t => project.Tables.FirstOrDefault(p => p.Schema.Equals(t.Schema, StringComparison.OrdinalIgnoreCase) && p.Name.Equals(t.Name, StringComparison.OrdinalIgnoreCase))?.Id ?? Guid.NewGuid().ToString("N"));
-            foreach (var table in incoming.Tables)
+            var preview = DatabaseMerge.Preview(project, snapshot);
+            project = DatabaseMerge.Apply(project, preview, selectedTableIds);
+            foreach (var fk in project.Tables.SelectMany(t => t.ForeignKeys))
             {
-                table.Id = ids[table.Id];
-                var old = project.Tables.FirstOrDefault(t => t.Id == table.Id);
-                if (old != null)
-                {
-                    table.Module = old.Module;
-                    table.Label = old.Label;
-                    table.Comment = old.Comment;
-                    foreach (var column in table.Columns)
-                    {
-                        var oldColumn = old.Columns.FirstOrDefault(c => c.Name.Equals(column.Name, StringComparison.OrdinalIgnoreCase));
-                        if (oldColumn != null)
-                        {
-                            column.Id = oldColumn.Id;
-                            column.Label = oldColumn.Label;
-                            column.Comment = oldColumn.Comment;
-                            column.InputLimit = oldColumn.InputLimit;
-                        }
-                    }
-                }
-                foreach (var fk in table.ForeignKeys)
-                {
-                    fk.TargetTableId = ids[fk.TargetTableId];
-                }
-                // 同名表原位替换，避免反复反推因表顺序改变产生无意义版本。
-                if (old == null)
-                {
-                    project.Tables.Add(table);
-                }
-                else
-                {
-                    project.Tables[project.Tables.IndexOf(old)] = table;
-                }
+                if (project.Tables.Any(t => t.Id == fk.TargetTableId)) continue;
+                var target = preview.Tables.FirstOrDefault(t => t.Table.Id == fk.TargetTableId)?.Table;
+                if (target != null) throw new InvalidOperationException($"外键 {fk.Name} 引用 {target.Schema}.{target.Name}，请一并勾选该引用表后重新合并。");
             }
             var errors = project.Tables.SelectMany(t => SqlServerDdl.Validate(project, t)).ToList();
             if (errors.Count > 0)
@@ -234,7 +206,7 @@ public sealed partial class StudioStore
             }
             if (CommitProject(db, project, revision))
             {
-                Log(db, actor.DisplayName, "从数据库反推设计", $"{project.Name} · {incoming.Tables.Count} 张表", projectId);
+                Log(db, actor.DisplayName, "从数据库反推设计", $"{project.Name} · {preview.Tables.Count(t => t.Status != "无变化" && (selectedTableIds == null || selectedTableIds.Contains(t.SourceId)))} 张表", projectId);
             }
             tx.Commit();
             return project;

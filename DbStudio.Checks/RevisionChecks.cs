@@ -56,6 +56,18 @@ internal static class RevisionChecks
         catch (InvalidOperationException) { staleRejected = true; }
         check("Stale identical save still rejects without writing", staleRejected && PersistedState() == before);
 
+        var selectable = ModelJson.Clone(project);
+        var databaseOnly = new TableDesign { Name = "ReverseSelectionOnly", Columns = [new() { Name = "Id", Type = "int" }] };
+        selectable.Tables.Add(databaseOnly);
+        var selectionSnapshot = new DatabaseSnapshot(selectable, []);
+        var unchangedSelection = store.ApplyDatabaseSnapshot(admin, project.Id, project.Revision, selectionSnapshot, []);
+        check("Empty reverse selection preserves revision and audit", unchangedSelection.Revision == project.Revision && PersistedState() == before);
+        var selectedProject = store.ApplyDatabaseSnapshot(admin, project.Id, project.Revision, selectionSnapshot, [databaseOnly.Id]);
+        check("Reverse service saves only selected new table", selectedProject.Revision == project.Revision + 1 && selectedProject.Tables.Count == project.Tables.Count + 1);
+        var selectedState = PersistedState();
+        store.ApplyDatabaseSnapshot(admin, project.Id, selectedProject.Revision, selectionSnapshot, [databaseOnly.Id]);
+        check("Repeating selected reverse merge does not create revision", PersistedState() == selectedState);
+
         void AssertChange(string name, Action<TableDesign> mutate)
         {
             var previousRevision = project.Revision;

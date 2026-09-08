@@ -33,11 +33,9 @@
         </div>
         @if (snapshot != null)
         {
-            <section class="tools-result"><div class="section-title"><div><h2>反推预览</h2><p class="muted">@snapshot.Project.Tables.Count 张表 · @snapshot.Project.Tables.Sum(t => t.Columns.Count) 个字段 · @snapshot.Project.Tables.Sum(t => t.ForeignKeys.Count) 条外键</p></div><button class="primary" disabled="@(snapshot.Warnings.Count > 0 || !design)" @onclick="ApplySnapshot">确认合并到设计</button></div>
-                <p class="muted">同名表更新结构并保留已有模块、名称与业务备注；新增表加入项目。仅在设计中存在的表会保留。此操作不修改实际数据库。</p>
-                @if (snapshot.Warnings.Count > 0) { <div class="settings-error"><b>以下特性尚不能无损合并：</b><ul>@foreach (var warning in snapshot.Warnings) { <li>@warning</li> }</ul></div> }
-                <div class="tools-table-scroll"><table class="list-table"><thead><tr><th>表</th><th>说明</th><th>字段</th><th>索引</th><th>外键</th><th>处理</th></tr></thead><tbody>@foreach (var t in snapshot.Project.Tables) { <tr><td class="mono">@t.Schema.@t.Name</td><td>@t.Label</td><td>@t.Columns.Count</td><td>@t.Indexes.Count</td><td>@t.ForeignKeys.Count</td><td>@(Project.Tables.Any(p => p.Name.Equals(t.Name, StringComparison.OrdinalIgnoreCase) && p.Schema.Equals(t.Schema, StringComparison.OrdinalIgnoreCase)) ? "更新结构" : "新增表")</td></tr> }</tbody></table></div>
-            </section>
+            @if (snapshot.Warnings.Count > 0) { <div class="settings-error"><b>以下特性尚不能无损合并：</b><ul>@foreach (var warning in snapshot.Warnings) { <li>@warning</li> }</ul></div> }
+            @if (reversePreview != null) { <DatabaseReversePreview Preview="reversePreview" CanApply="@(snapshot.Warnings.Count == 0 && design && snapshotRevision == Project.Revision)" Apply="ApplySnapshot" /> }
+            @if (snapshotRevision != Project.Revision) { <p class="settings-error">设计版本已变化，请重新读取结构后再合并。</p> }
         }
         @if (plan != null)
         {
@@ -67,6 +65,7 @@
     private DatabaseConnection? deleting;
     private DatabaseSnapshot? snapshot;
     private int snapshotRevision;
+    private ReversePreview? reversePreview;
     private DatabasePlan? plan;
     private CancellationTokenSource? operation;
     private DatabaseConnection? Selected => connections.FirstOrDefault(c => c.Id == connectionId);
@@ -101,12 +100,12 @@
     });
     private void SaveConnection() => Handle(() => { edit!.IntegratedSecurity = authentication == "windows"; var saved = Store.SaveConnection(Principal, edit, password); connections = Store.Connections(Principal, Project.Id); SelectConnection(saved.Id); password = ""; notice = "连接配置已保存，可以测试连接。"; });
     private Task Test() => Perform("正在测试连接…", async token => notice = "连接成功：" + await Tools.TestAsync(Principal, Project.Id, connectionId, token));
-    private Task Reverse() => Perform("正在读取数据库结构…", async token => { snapshot = null; InvalidatePlan(); snapshotRevision = Project.Revision; snapshot = await Tools.ReverseAsync(Principal, Project.Id, connectionId, token); });
+    private Task Reverse() => Perform("正在读取数据库结构…", async token => { snapshot = null; InvalidatePlan(); snapshotRevision = Project.Revision; snapshot = await Tools.ReverseAsync(Principal, Project.Id, connectionId, token); reversePreview = DatabaseMerge.Preview(Project, snapshot); });
     private Task Compare() => Perform("正在比对结构并生成脚本…", async token => { snapshot = null; InvalidatePlan(); plan = await Tools.CompareAsync(Principal, Project.Id, connectionId, prune, allowDataLoss, token); });
-    private async Task ApplySnapshot()
+    private async Task ApplySnapshot(List<string> selectedIds)
     {
         DesignProject? updated = null;
-        Handle(() => updated = Store.ApplyDatabaseSnapshot(Principal, Project.Id, snapshotRevision, snapshot!));
+        Handle(() => updated = Store.ApplyDatabaseSnapshot(Principal, Project.Id, snapshotRevision, snapshot!, selectedIds));
         if (updated != null) { await Saved.InvokeAsync(updated); snapshot = null; InvalidatePlan(); notice = "数据库结构已合并到项目设计。"; }
     }
     private Task Execute() => Perform("正在同步结构，请等待数据库返回结果…", async token =>
