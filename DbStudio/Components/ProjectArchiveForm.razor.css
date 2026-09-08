@@ -1,0 +1,11 @@
+.archive-fields {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+}
+
+.settings-error {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

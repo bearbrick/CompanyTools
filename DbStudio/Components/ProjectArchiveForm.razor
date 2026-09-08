@@ -1,0 +1,83 @@
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<form @onsubmit="DownloadAsync" @onsubmit:preventDefault>
+    <p class="muted">@Project.Name · @Project.Tables.Count 张表 · @Project.Tables.Sum(t => t.Columns.Count) 个字段 · 已保存修订 r@(Project.Revision)</p>
+    <p class="muted">正式首页和归档尾页，中间连续排列紧凑表结构。可空字段留白，主键、索引和外键在表下说明。</p>
+    @if (HasUnsavedChanges)
+    {
+        <p class="settings-notice" role="status">当前有未保存修改，本次 PDF 仅包含已保存内容。要包含修改，请先关闭窗口并保存设计。</p>
+    }
+    <fieldset disabled="@busy" class="archive-fields">
+        <div class="form-grid">
+            <label>文档编号<input @bind="options.DocumentNumber" maxlength="80" placeholder="例如 DB-ARCH-202609-001" /></label>
+            <label>文档版本<input @bind="options.Version" maxlength="30" required /></label>
+            <label>数据库名称<input @bind="options.DatabaseName" maxlength="128" placeholder="可选，未填写时保留空栏" /></label>
+            <label>SQL Server 版本<input @bind="options.DatabaseVersion" maxlength="80" placeholder="可选，填写实际产品版本" /></label>
+            <label>来源环境<input @bind="options.Environment" maxlength="40" placeholder="例如生产环境、测试环境" /></label>
+            <label>密级 / 分发范围<input @bind="options.Classification" maxlength="30" /></label>
+            <label>编制部门<input @bind="options.Department" maxlength="80" /></label>
+            <label>编制人<input @bind="options.PreparedBy" maxlength="50" /></label>
+        </div>
+    </fieldset>
+    <p class="muted">导出范围为当前项目全部已保存表，不受搜索过滤影响；不连接实际数据库。审核及签字栏留待核验后填写。</p>
+    @if (failure != "")
+    {
+        <p class="settings-error" role="alert">@failure</p>
+    }
+    @if (busy)
+    {
+        <p class="muted" role="status">正在生成 PDF，表或备注较多时请稍候…</p>
+    }
+    <div class="modal-footer">
+        <button type="button" disabled="@busy" @onclick="Cancel">取消</button>
+        <button type="submit" class="primary" disabled="@(busy || Project.Tables.Count == 0)"><Icon Name="download" /> @(busy ? "正在生成…" : "生成并下载 PDF")</button>
+    </div>
+</form>
+
+@code {
+    /// <summary>当前工作台已读取的保存快照；导出仍由服务器重读并校验修订号。</summary>
+    [Parameter, EditorRequired] public DesignProject Project { get; set; } = default!;
+    /// <summary>提示本地草稿不在归档范围内。</summary>
+    [Parameter] public bool HasUnsavedChanges { get; set; }
+    /// <summary>默认编制人，可由用户修改。</summary>
+    [Parameter] public string PreparedBy { get; set; } = "";
+    /// <summary>关闭当前窗口。</summary>
+    [Parameter] public EventCallback Cancel { get; set; }
+    /// <summary>浏览器收到 PDF 后通知父页面。</summary>
+    [Parameter] public EventCallback Downloaded { get; set; }
+    private StructureArchiveOptions options = new();
+    private bool busy;
+    private string failure = "";
+
+    protected override void OnInitialized()
+    {
+        options.PreparedBy = PreparedBy;
+    }
+
+    /// <summary>通过受授权的 HTTP 下载传输 PDF，错误留在表单内，归档信息无需重新填写。</summary>
+    private async Task DownloadAsync()
+    {
+        if (busy)
+        {
+            return;
+        }
+        failure = "";
+        busy = true;
+        try
+        {
+            options.Validate();
+            var url = Navigation.ToAbsoluteUri($"api/projects/{Uri.EscapeDataString(Project.Id)}/archive.pdf").AbsoluteUri;
+            await JS.InvokeVoidAsync("studio.downloadArchive", url, new { revision = Project.Revision, options });
+            await Downloaded.InvokeAsync();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JSException or TaskCanceledException)
+        {
+            failure = ex is TaskCanceledException ? "下载等待超时，请检查浏览器下载记录后重试。" : ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

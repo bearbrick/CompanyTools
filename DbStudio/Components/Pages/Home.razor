@@ -22,13 +22,14 @@
             @if (menu == "export")
             {
                 <h4>项目备份与迁移</h4>
+                <button disabled="@(!CanExport || project == null || project.Tables.Count == 0)" @onclick="OpenArchive"><Icon Name="download" /> 结构归档（PDF）</button>
                 <button disabled="@(!CanExport || project == null)" @onclick="ExportJson"><Icon Name="download" /> 项目备份（JSON）</button>
                 <button disabled="@(!CanExport || table == null)" @onclick="DownloadSql"><Icon Name="filetype-sql" /> 当前表 SQL 脚本</button>
                 @if (Can(Permission.Projects | Permission.Design))
                 {
                     <button @onclick="OpenImport"><Icon Name="folder2" /> 导入项目备份</button>
                 }
-                <small>项目备份导出已保存内容；SQL 使用当前编辑内容。</small>
+                <small>PDF 和项目备份导出已保存内容；SQL 使用当前编辑内容。</small>
             }
             @if (menu == "tools")
             {
@@ -188,7 +189,12 @@
 {
 <div class="modal-backdrop">
 <section class="modal @(modal == "column" ? "drawer" : "")" role="dialog" aria-modal="true" aria-label="编辑窗口">
-<div class="modal-heading"><div><span class="eyebrow">DB STUDIO</span><h2>@(modal switch { "table" => "表信息", "copy-table" => "复制表", "column" => "字段高级设置", "project" => "创建项目", "settings" => "项目设置", "paste" => "批量粘贴字段", "user" => "成员设置", "role" => "角色权限", "password" => "修改密码", "validation" => "设计检查", "import" => "导入项目备份", _ => "" })</h2></div><button class="icon-button" aria-label="关闭窗口" @onclick='() => modal = ""'><Icon Name="x-lg" /></button></div>
+<div class="modal-heading"><div><span class="eyebrow">DB STUDIO</span><h2>@(modal switch { "table" => "表信息", "copy-table" => "复制表", "column" => "字段高级设置", "project" => "创建项目", "settings" => "项目设置", "paste" => "批量粘贴字段", "user" => "成员设置", "role" => "角色权限", "password" => "修改密码", "validation" => "设计检查", "import" => "导入项目备份", "archive" => "结构归档（PDF）", _ => "" })</h2></div><button class="icon-button" aria-label="关闭窗口" @onclick='() => modal = ""'><Icon Name="x-lg" /></button></div>
+@if (modal == "archive" && project != null)
+{
+    <ProjectArchiveForm Project="project" HasUnsavedChanges="dirty" PreparedBy="@user.DisplayName"
+                        Cancel='() => modal = ""' Downloaded="ArchiveDownloaded" />
+}
 @if (modal == "settings" && project != null)
 {
     <ProjectSettings Project="project" Principal="principal" Saved="ProjectSettingsSaved" InitialSection="@settingsSection" />

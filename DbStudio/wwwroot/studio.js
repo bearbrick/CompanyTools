@@ -36,6 +36,25 @@ window.studio = {
     const url = URL.createObjectURL(new Blob([content], {type: type || 'text/plain;charset=utf-8'}));
     const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 2000);
   },
+  async downloadArchive(url, request) {
+    const sessionUrl = new URL('api/session', document.baseURI);
+    const sessionResponse = await fetch(sessionUrl, { credentials: 'same-origin', cache: 'no-store' });
+    if (!sessionResponse.ok || sessionResponse.redirected) throw new Error('登录已失效，请刷新并重新登录。');
+    const session = await sessionResponse.json();
+    const response = await fetch(url, {
+      method: 'POST', credentials: 'same-origin', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': session.csrf },
+      body: JSON.stringify(request)
+    });
+    if (!response.ok || !response.headers.get('content-type')?.startsWith('application/pdf')) {
+      const problem = await response.json().catch(() => null);
+      throw new Error(problem?.error || 'PDF 生成失败，请刷新项目后重试。');
+    }
+    const blob = await response.blob();
+    const encoded = response.headers.get('content-disposition')?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const name = encoded ? decodeURIComponent(encoded) : '数据库结构归档.pdf';
+    window.studio.download(name, blob, 'application/pdf');
+  },
   async copy(text) {
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(text);

@@ -35,6 +35,7 @@ internal static class ServiceRegistration
         builder.Services.AddAuthorization();
         builder.Services.AddSingleton<StudioStore>();
         builder.Services.AddSingleton<SqlServerTools>();
+        builder.Services.AddSingleton<StructureArchivePdf>();
         builder.Services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = 429;
