@@ -99,6 +99,7 @@ store.SaveRole(admin!, new("custom", "审核设计", Permission.Read | Permissio
 store.SaveUser(admin!, new("designer-test", "designer.test", "设计测试", "designer", true), "Designer12345!");
 var designer = store.Login("designer.test", "Designer12345!")!;
 store.SaveProjectMember(admin!, project.Id, "designer.test", ProjectAccess.Read | ProjectAccess.Design | ProjectAccess.Export);
+child.Comment = "设计成员修改说明";
 project = store.SaveTable(designer, project.Id, project.Revision, child);
 Check("Designer can save", project.Revision == 4);
 Reject<UnauthorizedAccessException>("Designer cannot manage roles", () => store.SaveRole(designer, new("no", "No", Permission.All)));
@@ -267,6 +268,7 @@ var cleanStore = new StudioStore(env, new ConfigurationBuilder().AddInMemoryColl
 Check("New installation has no Excel seed dependency", cleanStore.Projects(cleanStore.Login("admin", "CleanAdmin123!")!).Single().Tables.Count == 0);
 ConnectionChecks.Run(store, workerA, workerB, projectA, projectB, testPath, Check);
 await SharePageChecks.RunAsync(Check);
+RevisionChecks.Run(store, nextAdmin!, testPath, Check);
 
 var sourceProblems = imported.Tables.Select(t => new { t.Name, Errors = SqlServerDdl.Validate(imported, t) }).Where(x => x.Errors.Count > 0).ToList();
 Check("All imported tables pass supported structural validation", sourceProblems.Count == 0);

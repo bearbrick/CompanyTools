@@ -212,21 +212,30 @@ public sealed partial class StudioStore
                             column.InputLimit = oldColumn.InputLimit;
                         }
                     }
-                    project.Tables.Remove(old);
                 }
                 foreach (var fk in table.ForeignKeys)
                 {
                     fk.TargetTableId = ids[fk.TargetTableId];
                 }
-                project.Tables.Add(table);
+                // 同名表原位替换，避免反复反推因表顺序改变产生无意义版本。
+                if (old == null)
+                {
+                    project.Tables.Add(table);
+                }
+                else
+                {
+                    project.Tables[project.Tables.IndexOf(old)] = table;
+                }
             }
             var errors = project.Tables.SelectMany(t => SqlServerDdl.Validate(project, t)).ToList();
             if (errors.Count > 0)
             {
                 throw new InvalidOperationException(string.Join("\n", errors));
             }
-            CommitProject(db, project, revision);
-            Log(db, actor.DisplayName, "从数据库反推设计", $"{project.Name} · {incoming.Tables.Count} 张表", projectId);
+            if (CommitProject(db, project, revision))
+            {
+                Log(db, actor.DisplayName, "从数据库反推设计", $"{project.Name} · {incoming.Tables.Count} 张表", projectId);
+            }
             tx.Commit();
             return project;
         }

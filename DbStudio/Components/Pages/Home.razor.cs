@@ -297,11 +297,12 @@ public partial class Home : IDisposable
             return;
         }
 
-        project = Store.SaveTable(principal, project.Id, project.Revision, table);
+        var previousRevision = project.Revision;
+        project = Store.SaveTable(principal, project.Id, previousRevision, table);
         projects[projects.FindIndex(p => p.Id == project.Id)] = project;
         table = ModelJson.Clone(project.Tables.First(t => t.Id == table.Id));
         dirty = false;
-        message = "设计已保存 · r" + project.Revision;
+        message = project.Revision == previousRevision ? "内容未变化，无需保存 · r" + project.Revision : "设计已保存 · r" + project.Revision;
     });
 
     /// <summary>

@@ -135,25 +135,15 @@ public sealed partial class StudioStore
                     throw new InvalidOperationException(string.Join("\n", errors));
                 }
             }
-            // 文档、修订号和审计在同一事务中提交，避免保存成功却缺失操作记录。
-            project.Revision++;
-            using var update = Command(
-                db,
-                "UPDATE Projects SET Revision=$next,Document=$doc WHERE Id=$id AND Revision=$revision",
-                ("$next", project.Revision),
-                ("$doc", JsonSerializer.Serialize(project, ModelJson.Options)),
-                ("$id", projectId),
-                ("$revision", revision));
-            if (update.ExecuteNonQuery() != 1)
+            // 无实际变化时不写文档、不增加版本，也不产生虚假的变更记录。
+            if (CommitProject(db, project, revision))
             {
-                throw new InvalidOperationException("保存冲突，请刷新后重试。");
+                Log(
+                    db,
+                    actor.DisplayName,
+                    delete ? "删除表" : old < 0 ? "新增表" : "保存设计",
+                    $"{project.Name} / {table.Schema}.{table.Name} · r{project.Revision}", projectId);
             }
-
-            Log(
-                db,
-                actor.DisplayName,
-                delete ? "删除表" : old < 0 ? "新增表" : "保存设计",
-                $"{project.Name} / {table.Schema}.{table.Name} · r{project.Revision}", projectId);
             tx.Commit();
             return project;
         }

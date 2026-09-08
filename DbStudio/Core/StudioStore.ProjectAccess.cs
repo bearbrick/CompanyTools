@@ -142,8 +142,10 @@ public sealed partial class StudioStore
             var project = ReadProject(db, projectId);
             project.Name = name.Trim();
             project.Description = description.Trim();
-            CommitProject(db, project, revision);
-            Log(db, actor.DisplayName, "修改项目信息", project.Name, projectId);
+            if (CommitProject(db, project, revision))
+            {
+                Log(db, actor.DisplayName, "修改项目信息", project.Name, projectId);
+            }
             tx.Commit();
             return project;
         }
@@ -172,24 +174,44 @@ public sealed partial class StudioStore
             {
                 throw new InvalidOperationException("模块已不存在，请刷新。");
             }
+            // 原名保存不重排模块，也不把历史隐式模块转换成一次设计变更。
+            if (oldName == name)
+            {
+                CommitProject(db, project, revision);
+                tx.Commit();
+                return project;
+            }
             project.Modules = modules.Where(m => m != oldName).Append(name).ToList();
             foreach (var table in project.Tables.Where(t => t.Module == oldName))
             {
                 table.Module = name;
             }
-            CommitProject(db, project, revision);
-            Log(db, actor.DisplayName, oldName == null ? "创建模块" : "重命名模块", $"{project.Name} / {name}", projectId);
+            if (CommitProject(db, project, revision))
+            {
+                Log(db, actor.DisplayName, oldName == null ? "创建模块" : "重命名模块", $"{project.Name} / {name}", projectId);
+            }
             tx.Commit();
             return project;
         }
     }
 
-    /// <summary>共享的项目文档版本提交，只在事务内调用。</summary>
-    private static void CommitProject(SqliteConnection db, DesignProject project, int revision)
+    /// <summary>
+    /// 在同一事务中检查并发版本、比较完整设计并提交实际变更。
+    /// 比较双方均使用归一化模型，避免旧 JSON 的排版或缺省属性造成虚假版本。
+    /// 字段顺序、备注及业务说明属于设计内容，发生变化仍需升级修订号。
+    /// </summary>
+    /// <returns>实际写入返回 true；内容未变返回 false，调用方不应记录变更审计。</returns>
+    private bool CommitProject(SqliteConnection db, DesignProject project, int revision)
     {
-        if (project.Revision != revision)
+        var saved = ReadProject(db, project.Id);
+        if (project.Revision != revision || saved.Revision != revision)
         {
             throw new InvalidOperationException("项目已更新，请刷新后重试。本次未覆盖其他修改。");
+        }
+        // 先验证版本再判等，不能以“内容一致”为由放行过期客户端。
+        if (JsonSerializer.Serialize(saved, ModelJson.Options) == JsonSerializer.Serialize(project, ModelJson.Options))
+        {
+            return false;
         }
         project.Revision++;
         using var update = Command(db, "UPDATE Projects SET Name=$name,Revision=$next,Document=$doc WHERE Id=$id AND Revision=$revision",
@@ -199,5 +221,6 @@ public sealed partial class StudioStore
         {
             throw new InvalidOperationException("保存冲突，请刷新后重试。");
         }
+        return true;
     }
 }

@@ -47,6 +47,8 @@ internal static class DatabaseChecks
         check("SQL Server initial diff has create operations", plan.Changes.Any(c => c.Name.Contains("Product")) && plan.Script.Contains("CREATE TABLE"));
         check("SQL Server compare does not write target", (await tools.ReverseAsync(admin, project.Id, profile.Id)).Project.Tables.Count == 0);
         await RejectAsync("SQL Server requires exact database confirmation", () => tools.ExecuteAsync(admin, project.Id, plan.Id, "wrong"), check);
+        project = store.SaveTable(admin, project.Id, project.Revision, product);
+        check("Unchanged save preserves SQL Server preview plan revision", project.Revision == plan.ProjectRevision);
         await tools.ExecuteAsync(admin, project.Id, plan.Id, database);
         var snapshot = await tools.ReverseAsync(admin, project.Id, profile.Id);
         check("SQL Server deployment round trip preserves tables", snapshot.Project.Tables.Count == 2 && snapshot.Warnings.Count == 0);
