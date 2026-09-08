@@ -18328,7 +18328,7 @@
           "Nullable": false,
           "PrimaryKeyOrder": 0,
           "Identity": false,
-          "Default": "PL",
+          "Default": "N'PL'",
           "InputLimit": "",
           "Comment": "PL 已录入\\待执行 FI 已执行\\已完成 HI 已取消"
         },

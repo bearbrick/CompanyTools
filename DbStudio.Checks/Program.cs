@@ -282,6 +282,8 @@ foreach (var t in imported.Tables)
     }
 }
 Check("All imported table scripts parse with Microsoft ScriptDom: " + string.Join(" | ", syntaxProblems), syntaxProblems.Count == 0);
+ModelPackageChecks.Run(Check);
+Check("Full imported project builds as a DacFx comparison package", SqlServerTools.BuildPackage(imported).Length > 0);
 File.WriteAllText(Path.Combine(root, "Seed", "validation-report.json"), JsonSerializer.Serialize(sourceProblems, ModelJson.Options));
 Console.WriteLine($"SOURCE REVIEW: {sourceProblems.Count} / {imported.Tables.Count} tables have definitions needing review; see Seed/validation-report.json");
 var sqlTestServer = Environment.GetEnvironmentVariable("STUDIO_SQLTEST_SERVER");

@@ -87,6 +87,9 @@ public static partial class SqlServerDdl
             }
 
             sb.AppendLine($"EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value={Lit(label)}, @level0type=N'SCHEMA', @level0name={Lit(table.Schema)}, @level1type=N'TABLE', @level1name={Lit(table.Name)}{(column == null ? "" : ", @level2type=N'COLUMN', @level2name=" + Lit(column))};");
+            // DacFx 把扩展属性当作模型声明，每条语句必须独立成批。
+            // 在生成处添加分隔符，避免按文本拆分时误切开备注中的换行或 GO。
+            sb.AppendLine("GO");
         }
         Description(string.Join(" · ", new[] { table.Label, table.Comment }.Where(s => s != "")));
         foreach (var c in table.Columns)

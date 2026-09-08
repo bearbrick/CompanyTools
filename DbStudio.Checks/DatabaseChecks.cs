@@ -26,7 +26,7 @@ internal static class DatabaseChecks
             Label = "分类",
             PrimaryKeyName = "PK_Category_Custom",
             PrimaryKeyClustered = false,
-            Columns = [new() { Name = "Id", Type = "int", Nullable = false, PrimaryKeyOrder = 1 }, new() { Name = "Name", Type = "nvarchar", Length = "40", Nullable = false }],
+            Columns = [new() { Name = "Id", Type = "int", Label = "分类编号", Nullable = false, PrimaryKeyOrder = 1 }, new() { Name = "Name", Type = "nvarchar", Label = "分类名称", Length = "40", Nullable = false }],
             Indexes = [new() { Name = "IX_Category_Name", Columns = "Name", DescendingColumns = "Name", Unique = true, Clustered = true }]
         };
         var product = new TableDesign
@@ -54,6 +54,7 @@ internal static class DatabaseChecks
         check("SQL Server deployment round trip preserves tables", snapshot.Project.Tables.Count == 2 && snapshot.Warnings.Count == 0);
         var actualCategory = snapshot.Project.Tables.Single(t => t.Name == "Category");
         var actualProduct = snapshot.Project.Tables.Single(t => t.Name == "Product");
+        check("SQL Server sync preserves table and multiple column descriptions", actualCategory.Label == category.Label && actualCategory.Columns.Single(c => c.Name == "Id").Label == "分类编号" && actualCategory.Columns.Single(c => c.Name == "Name").Label == "分类名称");
         check("SQL Server reverse preserves custom PK and descending index", actualCategory.PrimaryKeyName == category.PrimaryKeyName && actualCategory.PrimaryKeyClustered == false && actualCategory.Indexes.Single().DescendingColumns == "Name");
         check("SQL Server reverse preserves FK CHECK precision", actualProduct.ForeignKeys.Single().OnDelete == "SET NULL" && actualProduct.Checks.Count == 1 && actualProduct.Columns.Single(c => c.Name == "CreatedAt").TemporalScale == 3);
         await RejectAsync("SQL Server consumed plan cannot repeat", () => tools.ExecuteAsync(admin, project.Id, plan.Id, database), check);
