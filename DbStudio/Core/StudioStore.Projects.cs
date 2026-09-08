@@ -158,7 +158,7 @@ public sealed partial class StudioStore
     {
         RequireProject(principal, id, ProjectAccess.Export, Permission.Export);
         using var db = Open();
-        return JsonSerializer.Serialize(ReadProject(db, id), ModelJson.Options);
+        return ProjectBackup.Serialize(ReadProject(db, id));
     }
 
     /// <summary>

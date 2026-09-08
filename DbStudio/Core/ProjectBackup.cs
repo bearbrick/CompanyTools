@@ -1,6 +1,8 @@
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Unicode;
 
 namespace DbStudio.Core;
 
@@ -16,6 +18,16 @@ public static class ProjectBackup
 {
     /// <summary>单份备份上限为 10 MiB，文件读取和服务端提交采用相同限制。</summary>
     public const int MaxBytes = 10 * 1024 * 1024;
+
+    // 仅下载备份使用可读 Unicode；保留 JSON 必需及 HTML 敏感字符的转义，
+    // 不改变数据库存储、快照比较和页面内嵌 JSON 的既有序列化规则。
+    private static readonly JsonSerializerOptions ExportOptions = new(ModelJson.Options)
+    {
+        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
+    };
+
+    /// <summary>导出缩进排版的项目 JSON，中文直接显示，仍兼容原有备份导入格式。</summary>
+    public static string Serialize(DesignProject project) => JsonSerializer.Serialize(project, ExportOptions);
 
     private static readonly JsonSerializerOptions ImportOptions = new(ModelJson.Options)
     {

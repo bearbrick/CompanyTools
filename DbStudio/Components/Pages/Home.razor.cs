@@ -538,7 +538,7 @@ public partial class Home : IDisposable
         Run(() => content = Store.ExportProject(principal, project!.Id));
         if (content != "")
         {
-            await JS.InvokeVoidAsync("studio.download", project!.Name + ".json", content, "application/json");
+            await JS.InvokeVoidAsync("studio.download", project!.Name + ".json", content, "application/json;charset=utf-8");
         }
     }
 
