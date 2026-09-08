@@ -1,0 +1,41 @@
+/* 使用容器宽度决定列数，侧栏展开或小窗口下也不会挤压输入控件。 */
+.compact-constraints { padding: 14px 22px; background: #f5f7fb; container-type: inline-size; }
+.compact-constraints .section-title { margin-bottom: 12px; gap: 16px; }
+.compact-constraints .section-title h2 { font-size: 16px; }
+.compact-constraints .section-title p { margin: 4px 0 0; font-size: 12px; line-height: 1.5; }
+.compact-constraints .section-title > button { padding: 6px 12px; white-space: nowrap; }
+.constraint-editor { padding: 0; margin: 0 0 12px; border: 1px solid #cfdbea; border-left: 3px solid #7b9bc9; border-radius: 7px; box-shadow: 0 1px 3px #18345108; overflow: hidden; }
+.constraint-editor:focus-within { border-color: #87aaf0; box-shadow: 0 0 0 2px #1b59cd0a; }
+.constraint-header { min-height: 40px; padding: 5px 10px; margin: 0; gap: 8px; background: #eaf0f9; border-bottom: 1px solid #dce5f2; }
+.constraint-number { min-width: 24px; font: 600 12px Consolas, monospace; color: #536f94; }
+.constraint-kind { padding: 2px 7px; border: 1px solid #cfdced; background: #fff; border-radius: 4px; font-size: 11px; white-space: nowrap; color: #416896; }
+.constraint-header > input { flex: 1; min-width: 0; max-width: none; height: 30px; padding: 4px 8px; background: transparent; border: 1px solid transparent; font-size: 12px; color: #214c83; }
+.constraint-header > input:focus { background: #fff; border-color: #91b0eb; }
+.constraint-header > button { margin-left: 0; width: 30px; height: 30px; padding: 5px; flex-shrink: 0; }
+.constraint-editor .form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 12px; padding: 10px 12px; }
+.constraint-editor label { margin: 0; gap: 4px; font-size: 11px; color: #61738d; min-width: 0; }
+.constraint-editor label > input { height: 32px; min-width: 0; padding: 5px 8px; font-size: 12px; }
+.constraint-editor .check-row { margin: 0; padding: 0 12px 10px; gap: 18px; flex-wrap: wrap; }
+.constraint-editor .check-row label { flex-direction: row; align-items: center; gap: 6px; color: #405777; }
+.constraint-editor .check-row input { width: 14px; height: 14px; padding: 0; }
+.foreign-editor { border-left-color: #699e99; }
+.foreign-editor .constraint-header { background: #edf5f4; }
+.foreign-editor .form-grid { grid-template-columns: 1fr 1.5fr 1fr 1fr 1fr; }
+.relationship-label { margin: 0; padding: 6px 12px; background: #fafcfd; border-bottom: 1px solid #edf1f5; gap: 8px; font-size: 11px; overflow-wrap: anywhere; }
+.relationship-label span { min-width: 0; }
+.constraint-editor ::deep .select-trigger { min-height: 32px; height: 32px; padding: 5px 8px; font-size: 12px; }
+.constraint-editor ::deep .studio-select { min-width: 0; }
+.check-editor { border-left-color: #a492bb; }
+.check-editor .constraint-header { background: #f1eef7; }
+.check-editor > label { padding: 9px 12px 11px; }
+.check-editor textarea { min-height: 48px; height: 48px; padding: 6px 8px; font: 12px/1.5 Consolas, monospace; resize: vertical; }
+@container (max-width: 1000px) {
+    .constraint-editor .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .foreign-editor .form-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@container (max-width: 600px) {
+    .constraint-editor .form-grid { grid-template-columns: minmax(0, 1fr); }
+    .constraint-header { gap: 4px; }
+    .constraint-number { min-width: 18px; }
+    .relationship-label { flex-wrap: wrap; }
+}

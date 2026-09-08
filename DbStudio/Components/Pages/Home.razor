@@ -157,38 +157,10 @@
             }
             @if (tab is "indexes" or "foreign" or "checks")
             {
-                <div class="constraint-content">
-                    <div class="section-title"><div><h2>@(tab == "indexes" ? "索引与唯一约束" : tab == "foreign" ? "外键关系" : "检查约束")</h2><p class="muted">@(tab == "indexes" ? "组合列按填写顺序生成；包含列和过滤条件用于普通索引。" : tab == "foreign" ? "选择引用表，建立字段关系。复合字段用英文逗号分隔，按顺序一一对应。" : "使用 SQL 表达式限制字段值，例如 [Quantity] > 0。")</p></div><button class="primary" disabled="@(!CanDesign)" @onclick="AddConstraint"><Icon Name="plus-lg" /> 新增</button></div>
-                    <fieldset disabled="@(!CanDesign)">
-                    @if (tab == "indexes")
-                    {
-                        @foreach (var ix in table.Indexes)
-                        {
-                            <div class="constraint-editor"><div class="constraint-header"><Icon Name="list-columns" /><input aria-label="索引名称" @bind="ix.Name" @bind:after="MarkDirty" @bind:event="oninput" /><button class="icon-button danger" aria-label="删除索引" @onclick="() => { table.Indexes.Remove(ix); MarkDirty(); }"><Icon Name="trash3" /></button></div>
-                            <div class="form-grid"><label>键列（英文逗号分隔）<input @bind="ix.Columns" @bind:after="MarkDirty" @bind:event="oninput" placeholder="CustNum, Name" /></label><label>降序键列<input @bind="ix.DescendingColumns" @bind:after="MarkDirty" @bind:event="oninput" placeholder="可选，例如 CreatedAt" /></label><label>包含列<input @bind="ix.Include" @bind:after="MarkDirty" @bind:event="oninput" placeholder="可选，例如 Remark" /></label><label class="wide">过滤条件<input class="mono" @bind="ix.Filter" @bind:after="MarkDirty" @bind:event="oninput" placeholder="可选，例如 [IsDeleted] = 0" /></label></div><div class="check-row"><label><input type="checkbox" @bind="ix.Unique" @bind:after="MarkDirty" /> 唯一</label><label><input type="checkbox" @bind="ix.IsConstraint" @bind:after="MarkDirty" /> 唯一约束（UNIQUE）</label><label><input type="checkbox" @bind="ix.Clustered" @bind:after="MarkDirty" /> 聚集索引</label></div></div>
-                        }
-                        @if (table.Indexes.Count == 0) { <div class="empty-state"><Icon Name="list-columns" /><h3>为常用查询定义索引</h3><p>支持复合索引、唯一约束、包含列与过滤条件。<br />主键由字段定义中的主键设置生成。</p></div> }
-                    }
-                    @if (tab == "foreign")
-                    {
-                        @foreach (var fk in table.ForeignKeys)
-                        {
-                            <div class="constraint-editor"><div class="constraint-header"><Icon Name="diagram-3" /><input aria-label="外键名称" @bind="fk.Name" @bind:after="MarkDirty" @bind:event="oninput" /><button class="icon-button danger" aria-label="删除外键" @onclick="() => { table.ForeignKeys.Remove(fk); MarkDirty(); }"><Icon Name="trash3" /></button></div>
-                            <div class="relationship-label"><span>@table.Name</span><Icon Name="arrow-right" /><span>@(project.Tables.FirstOrDefault(t => t.Id == fk.TargetTableId)?.Name ?? "选择引用表")</span></div>
-                            <div class="form-grid"><label>本表字段<StudioSelect Label="本表字段" Placeholder="选择字段" @bind-Value="fk.Columns" @bind-Value:after="MarkDirty" Items="LocalColumnOptions" AllowCustom="true" SearchPlaceholder="搜索字段；复合字段用逗号分隔…" /></label><label>引用表<StudioSelect Label="引用表" Placeholder="选择引用表" @bind-Value="fk.TargetTableId" @bind-Value:after="MarkDirty" Items="TableOptions" /></label><label>引用字段<input @bind="fk.TargetColumns" @bind:after="MarkDirty" @bind:event="oninput" placeholder="例如 Id；须为目标主键或唯一键" /></label><label>删除规则<StudioSelect Label="删除规则" @bind-Value="fk.OnDelete" @bind-Value:after="MarkDirty" Items="ActionOptions" /></label><label>更新规则<StudioSelect Label="更新规则" @bind-Value="fk.OnUpdate" @bind-Value:after="MarkDirty" Items="ActionOptions" /></label></div></div>
-                        }
-                        @if (table.ForeignKeys.Count == 0) { <div class="empty-state"><Icon Name="diagram-3" /><h3>把表之间的关系定义清楚</h3><p>新增外键，关联本表与目标表的字段。<br />从 Excel 导入的备注保留原文，不会自动转成外键。</p></div> }
-                    }
-                    @if (tab == "checks")
-                    {
-                        @foreach (var ck in table.Checks)
-                        {
-                            <div class="constraint-editor"><div class="constraint-header"><Icon Name="shield-check" /><input aria-label="检查约束名称" @bind="ck.Name" @bind:after="MarkDirty" @bind:event="oninput" /><button class="icon-button danger" aria-label="删除检查约束" @onclick="() => { table.Checks.Remove(ck); MarkDirty(); }"><Icon Name="trash3" /></button></div><label>SQL 检查表达式<textarea class="mono" rows="3" @bind="ck.Expression" @bind:after="MarkDirty" @bind:event="oninput" placeholder="[Quantity] >= 0"></textarea></label></div>
-                        }
-                        @if (table.Checks.Count == 0) { <div class="empty-state"><Icon Name="shield-check" /><h3>为数据定义明确的边界</h3><p>用 CHECK 约束表达取值范围与字段之间的条件。</p></div> }
-                    }
-                    </fieldset>
-                </div>
+                <ConstraintPanel Table="table" Project="project" Kind="@tab" CanEdit="CanDesign"
+                                 TableOptions="TableOptions" LocalColumnOptions="LocalColumnOptions" ActionOptions="ActionOptions"
+                                 Changed="MarkDirty" AddRequested="AddConstraint" />
+
             }
             @if (tab == "sql")
             {
