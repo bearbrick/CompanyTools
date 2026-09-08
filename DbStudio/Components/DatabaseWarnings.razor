@@ -1,0 +1,33 @@
+@if (Items.Count > 0)
+{
+    <section class="deployment-warnings" aria-label="同步前需核对的事项">
+        <div class="warning-heading"><h3>同步前需核对的事项</h3><span>@Items.Sum(w => w.Issues.Count) 条提示 · @Items.Count 类</span></div>
+        <p class="warning-intro">这是执行前的诊断，尚未修改数据库。下方保留 DacFx 的具体原因与对象名称。</p>
+        @foreach (var warning in Items)
+        {
+            <article class="deployment-warning">
+                <div class="warning-heading"><h4>@warning.Title</h4><code>@warning.Code</code></div>
+                <p>@warning.Explanation</p>
+                <ol class="warning-issues">
+                    @foreach (var issue in warning.Issues)
+                    {
+                        <li>
+                            @if (issue.Objects.Count > 0)
+                            {
+                                <div class="warning-objects"><b>涉及对象</b>@foreach (var item in issue.Objects) { <span><code>@item.Name</code> <small>@item.Type</small></span> }</div>
+                            }
+                            <p class="warning-message">@issue.Message</p>
+                            @if (issue.Id != "") { <small class="warning-issue-id">问题编号 @issue.Id</small> }
+                        </li>
+                    }
+                </ol>
+                <details class="warning-raw"><summary>原始诊断 XML</summary><pre>@warning.RawXml</pre></details>
+            </article>
+        }
+    </section>
+}
+
+@code {
+    /// <summary>仅用于展示当前服务端计划的诊断，不改变同步选项或执行权限。</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<DeploymentWarning> Items { get; set; } = [];
+}

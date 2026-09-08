@@ -15,7 +15,7 @@ public record SchemaChange(string Operation, string ObjectType, string Name);
 
 /// <summary>只包含可显示信息的同步计划，实际执行始终使用服务端保存的不可变包。</summary>
 public record DatabasePlan(string Id, string Database, int ProjectRevision, DateTimeOffset ExpiresAt,
-    List<SchemaChange> Changes, List<string> Warnings, string Script, bool Prune, bool AllowDataLoss);
+    List<SchemaChange> Changes, List<DeploymentWarning> Warnings, string Script, bool Prune, bool AllowDataLoss);
 
 /// <summary>
 /// SQL Server 工具编排。DacFx 负责语义比对和事务部署；浏览器不能提交任意 SQL 执行。
@@ -80,7 +80,7 @@ public sealed class SqlServerTools(StudioStore store)
             var changes = xml.Descendants().Where(e => e.Name.LocalName == "Operation")
                 .SelectMany(operation => operation.Descendants().Where(e => e.Name.LocalName == "Item")
                     .Select(item => new SchemaChange((string?)operation.Attribute("Name") ?? "", (string?)item.Attribute("Type") ?? "", (string?)item.Attribute("Value") ?? ""))).ToList();
-            var warnings = xml.Descendants().Where(e => e.Name.LocalName == "Alert").Select(e => (string?)e.Attribute("Name") + ": " + e.Value).ToList();
+            var warnings = DeploymentWarnings.Parse(xml);
             var plan = new DatabasePlan(Guid.NewGuid().ToString("N"), credential.Profile.Database, project.Revision,
                 DateTimeOffset.UtcNow.AddMinutes(15), changes, warnings, script, prune, allowDataLoss);
             store.RequireProject(principal, projectId, ProjectAccess.Database, Permission.Design);

@@ -43,7 +43,7 @@
         {
             <section class="tools-result"><div class="section-title"><div><h2>结构差异 <span>@plan.Changes.Count</span></h2><p class="muted">目标 @Selected?.Server / @plan.Database · 设计 r@(plan.ProjectRevision) · 计划有效至 @plan.ExpiresAt.ToLocalTime().ToString("HH:mm")</p></div><button @onclick="DownloadPlan">下载同步 SQL</button></div>
                 @if (plan.Changes.Count == 0) { <p class="settings-notice">当前比对选项下，设计与数据库结构一致。</p> }
-                @if (plan.Warnings.Count > 0) { <div class="settings-error"><ul>@foreach (var warning in plan.Warnings) { <li>@warning</li> }</ul></div> }
+                <DatabaseWarnings Items="plan.Warnings" />
                 <div class="tools-table-scroll"><table class="list-table"><thead><tr><th>操作</th><th>对象类型</th><th>对象</th></tr></thead><tbody>@foreach (var change in plan.Changes) { <tr><td>@OperationName(change.Operation)</td><td>@change.ObjectType</td><td class="mono">@change.Name</td></tr> }</tbody></table></div>
                 <details class="plan-script"><summary>查看完整同步脚本</summary><pre>@plan.Script</pre></details>
                 @if (plan.Changes.Count > 0)
