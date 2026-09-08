@@ -15,7 +15,16 @@ public partial class DatabaseToolsPanel
     private TableDesign? ScopeTable => Project.Tables.SingleOrDefault(table => table.Id == TableId);
 
     /// <summary>两种模式通过不同服务入口明确范围，计划生成之后由服务端固定执行包。</summary>
-    private Task<DatabasePlan> CompareScopeAsync(CancellationToken token) => SingleTable
-        ? Tools.CompareTableAsync(Principal, Project.Id, connectionId, TableId!, prune, allowDataLoss, token)
-        : Tools.CompareAsync(Principal, Project.Id, connectionId, prune, allowDataLoss, token);
+    private Task<DatabasePlan> CompareScopeAsync(CancellationToken token)
+    {
+        var stages = new Progress<string>(stage =>
+        {
+            if (token.IsCancellationRequested || !busy) { return; }
+            progress = stage + "…";
+            StateHasChanged();
+        });
+        return SingleTable
+            ? Tools.CompareTableAsync(Principal, Project.Id, connectionId, TableId!, prune, allowDataLoss, token, stages)
+            : Tools.CompareAsync(Principal, Project.Id, connectionId, prune, allowDataLoss, token, stages);
+    }
 }

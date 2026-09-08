@@ -23,6 +23,13 @@ internal static class SingleTableDatabaseChecks
         project = store.SaveTable(admin, project.Id, project.Revision, a);
         project = store.SaveTable(admin, project.Id, project.Revision, b);
         var tools = new SqlServerTools(store);
+        // 新表的匿名默认约束在 DacFx 报告中带类型前缀，也必须正确识别其表范围。
+        var fresh = new TableDesign { Name = "Fresh", Columns = [new() { Name = "Value", Type = "int", Default = "0" }] };
+        project = store.SaveTable(admin, project.Id, project.Revision, fresh);
+        var freshPlan = await tools.CompareTableAsync(admin, project.Id, profile.Id, fresh.Id);
+        check("SQL single-table new table accepts anonymous default report names", freshPlan.Changes.Any(c => c.ObjectType == "SqlDefaultConstraint"));
+        check("SQL comparison exposes measured stages", freshPlan.Timings is { Count: 4 } && freshPlan.Timings.All(t => t.Milliseconds >= 0));
+        project = store.SaveTable(admin, project.Id, project.Revision, fresh, delete: true);
         var initial = await tools.CompareAsync(admin, project.Id, profile.Id);
         await tools.ExecuteAsync(admin, project.Id, initial.Id, database);
         a.Columns[1].Length = "100";

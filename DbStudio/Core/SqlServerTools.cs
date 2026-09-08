@@ -16,7 +16,7 @@ public record SchemaChange(string Operation, string ObjectType, string Name);
 /// <summary>只包含可显示信息的同步计划，实际执行始终使用服务端保存的不可变包。</summary>
 public record DatabasePlan(string Id, string Database, int ProjectRevision, DateTimeOffset ExpiresAt,
     List<SchemaChange> Changes, List<DeploymentWarning> Warnings, string Script, bool Prune, bool AllowDataLoss,
-    TableDeploymentScope? Scope = null);
+    TableDeploymentScope? Scope = null, IReadOnlyList<ComparisonTiming>? Timings = null);
 
 /// <summary>
 /// SQL Server 工具编排。DacFx 负责语义比对和事务部署；浏览器不能提交任意 SQL 执行。

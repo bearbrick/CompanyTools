@@ -3,3 +3,4 @@
 .table-comparison-scope strong { font-size: 15px; }
 .table-comparison-scope code { color: #24538e; font-size: 12px; overflow-wrap: anywhere; }
 .table-comparison-scope > span:last-child { color: #7085a1; font-size: 12px; }
+.comparison-timings { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 12px; }

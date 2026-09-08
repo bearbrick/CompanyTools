@@ -72,6 +72,7 @@ public static class TableDeployment
     public static void ValidateChanges(byte[] sourcePackage, byte[] targetPackage, TableDeploymentScope scope, IReadOnlyList<SchemaChange> changes)
     {
         var allowed = new HashSet<(string Type, string Name)>();
+        var anonymous = new HashSet<(string Type, string Name)>();
         foreach (var bytes in new[] { sourcePackage, targetPackage })
         {
             using var input = new MemoryStream(bytes);
@@ -91,11 +92,14 @@ public static class TableDeployment
                 }
                 if (item.ObjectType.Name == "DefaultConstraint" && item.Name.Parts.Count == 0)
                 {
+                    anonymous.Add(("SqlDefaultConstraint", model.DisplayServices.GetElementName(item, ElementNameStyle.EscapedFullyQualifiedName)));
                     allowed.Add(("SqlDefaultConstraint", $"{SqlServerDdl.Q(scope.Schema)}.{SqlServerDdl.Q(scope.Name)}"));
                 }
             }
         }
         var outside = changes.Where(change => !allowed.Contains((change.ObjectType, change.Name))
+            // 新表的匿名 DEFAULT 在报告中可能带本地化类型前缀；仍严格匹配类型及完整宿主显示名。
+            && !anonymous.Any(item => item.Type == change.ObjectType && change.Name.EndsWith(": " + item.Name, StringComparison.Ordinal))
             && !(change.Operation == "Create" && change.ObjectType == "SqlSchema" && change.Name == SqlServerDdl.Q(scope.Schema)))
             .ToList();
         if (outside.Count > 0)
