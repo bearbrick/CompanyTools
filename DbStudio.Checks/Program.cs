@@ -93,6 +93,7 @@ store.SaveProjectMember(admin!, project.Id, "reader.test", ProjectAccess.Read);
 Check("Reader sees only assigned project", store.Projects(reader).Select(p => p.Id).SequenceEqual([project.Id]));
 Reject<UnauthorizedAccessException>("Reader cannot save", () => store.SaveTable(reader, project.Id, project.Revision, child));
 Reject<UnauthorizedAccessException>("Reader cannot export", () => store.ExportProject(reader, project.Id));
+Reject<UnauthorizedAccessException>("Reader cannot export project SQL", () => store.ExportProjectSql(reader, project.Id));
 Reject<UnauthorizedAccessException>("Reader cannot manage users", () => store.Users(reader));
 Reject<UnauthorizedAccessException>("Reader cannot create project", () => store.NewProject(reader, "No", ""));
 store.SaveRole(admin!, new("custom", "审核设计", Permission.Read | Permission.Export));
@@ -163,6 +164,9 @@ Check("Preflight detects inbound FK mismatch", SqlServerDdl.ValidateChange(chang
 
 // 备份恢复验证：预览不写库、提交重校验、引用重映射及失败原子性。
 var backupJson = store.ExportProject(nextAdmin!, project.Id);
+var projectSql = store.ExportProjectSql(nextAdmin!, project.Id);
+Check("Project SQL export contains every saved table", store.Projects(nextAdmin!).Single(p => p.Id == project.Id).Tables
+    .All(t => projectSql.Contains("CREATE TABLE " + SqlServerDdl.Q(t.Schema) + "." + SqlServerDdl.Q(t.Name))));
 var projectCountBeforeImport = store.Projects(nextAdmin!).Count;
 var backupPreview = store.PreviewImport(nextAdmin!, backupJson);
 Check("Backup preview validates without writing", backupPreview.Errors.Count == 0
@@ -220,6 +224,7 @@ Check("Creator is project manager", store.AccessTo(workerA, projectA.Id) == Proj
 Check("Project lists isolated", store.Projects(workerA).Select(p => p.Id).SequenceEqual([projectA.Id]) && store.Projects(workerB).Select(p => p.Id).SequenceEqual([projectB.Id]));
 Reject<UnauthorizedAccessException>("Cross-project save rejected", () => store.SaveTable(workerA, projectB.Id, projectB.Revision, parent));
 Reject<UnauthorizedAccessException>("Cross-project export rejected", () => store.ExportProject(workerA, projectB.Id));
+Reject<UnauthorizedAccessException>("Cross-project SQL export rejected", () => store.ExportProjectSql(workerA, projectB.Id));
 Reject<UnauthorizedAccessException>("Cross-project DDL rejected", () => store.Ddl(workerA, projectB, parent));
 Reject<UnauthorizedAccessException>("Cross-project rename rejected", () => store.UpdateProject(workerA, projectB.Id, projectB.Revision, "越权", ""));
 Reject<UnauthorizedAccessException>("Cross-project members rejected", () => store.ProjectMembers(workerA, projectB.Id));
@@ -276,6 +281,7 @@ SchemaModelFingerprintChecks.Run(Check);
 SchemaDeploymentSecurityChecks.Run(Check);
 SchemaDeploymentBoundaryChecks.Run(Check);
 SchemaDriftChecks.Run(Check);
+ProjectSqlChecks.Run(Check);
 await StructureArchiveChecks.RunAsync(store, nextAdmin!, workerA, testPath, Check);
 
 var sourceProblems = imported.Tables.Select(t => new { t.Name, Errors = SqlServerDdl.Validate(imported, t) }).Where(x => x.Errors.Count > 0).ToList();

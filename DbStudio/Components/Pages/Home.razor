@@ -24,12 +24,12 @@
                 <h4>项目备份与迁移</h4>
                 <button disabled="@(!CanExport || project == null || project.Tables.Count == 0)" @onclick="OpenArchive"><Icon Name="download" /> 结构归档（PDF）</button>
                 <button disabled="@(!CanExport || project == null)" @onclick="ExportJson"><Icon Name="download" /> 项目备份（JSON）</button>
-                <button disabled="@(!CanExport || table == null)" @onclick="DownloadSql"><Icon Name="filetype-sql" /> 当前表 SQL 脚本</button>
+                <button disabled="@(!CanExport || project == null || project.Tables.Count == 0)" @onclick="DownloadProjectSql"><Icon Name="filetype-sql" /> 项目 SQL 脚本</button>
                 @if (Can(Permission.Projects | Permission.Design))
                 {
                     <button @onclick="OpenImport"><Icon Name="folder2" /> 导入项目备份</button>
                 }
-                <small>PDF 和项目备份导出已保存内容；SQL 使用当前编辑内容。</small>
+                <small>项目导出使用全部已保存内容；当前表 SQL 可在 SQL 预览中下载。</small>
             }
             @if (menu == "tools")
             {

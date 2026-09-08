@@ -11,6 +11,10 @@ public static partial class SqlServerDdl
     /// 验证设计并生成建表脚本；不连接实际数据库，也不执行 SQL。
     /// </summary>
     public static string Generate(DesignProject project, TableDesign table, bool forModel = false)
+        => GenerateCore(project, table, forModel, includeForeignKeys: true);
+
+    /// <summary>共用表结构生成逻辑；项目导出推迟外键声明，避免表顺序和循环引用导致执行失败。</summary>
+    private static string GenerateCore(DesignProject project, TableDesign table, bool forModel, bool includeForeignKeys)
     {
         var errors = Validate(project, table);
         if (errors.Count > 0)
@@ -80,11 +84,7 @@ public static partial class SqlServerDdl
             sb.AppendLine($"CREATE {(ix.Unique ? "UNIQUE " : "")}{(ix.Clustered ? "CLUSTERED" : "NONCLUSTERED")} INDEX {Q(ix.Name)} ON {name} ({KeyList(ix.Columns, ix.DescendingColumns)}){(ix.Include == "" ? "" : " INCLUDE (" + List(ix.Include) + ")")}{(ix.Filter == "" ? "" : " WHERE " + ix.Filter)};\nGO\n");
         }
 
-        foreach (var fk in table.ForeignKeys)
-        {
-            var target = project.Tables.First(t => t.Id == fk.TargetTableId);
-            sb.AppendLine($"ALTER TABLE {name} ADD CONSTRAINT {Q(fk.Name)} FOREIGN KEY ({List(fk.Columns)}) REFERENCES {Q(target.Schema)}.{Q(target.Name)} ({List(fk.TargetColumns)}) ON DELETE {fk.OnDelete} ON UPDATE {fk.OnUpdate};\nGO\n");
-        }
+        if (includeForeignKeys) { AppendForeignKeys(sb, project, table); }
         void Description(string label, string? column = null)
         {
             if (string.IsNullOrWhiteSpace(label))
