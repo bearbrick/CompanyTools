@@ -71,6 +71,23 @@ public static class TableDeployment
     /// </summary>
     public static void ValidateChanges(byte[] sourcePackage, byte[] targetPackage, TableDeploymentScope scope, IReadOnlyList<SchemaChange> changes)
     {
+        var outside = OutsideChanges(sourcePackage, targetPackage, scope, changes);
+        if (outside.Count > 0)
+        {
+            throw new InvalidOperationException("本次变更涉及当前表之外的依赖对象，单表同步已停止。请使用整库比对核对关联影响：\n"
+                + string.Join("\n", outside.Take(8).Select(change => $"{change.Operation} · {change.ObjectType} · {change.Name}")));
+        }
+    }
+
+    /// <summary>按真实模型宿主选择本表变化，供执行前结构漂移核验复用。</summary>
+    internal static List<SchemaChange> ChangesWithinScope(byte[] before, byte[] after, TableDeploymentScope scope, IReadOnlyList<SchemaChange> changes)
+    {
+        var outside = OutsideChanges(before, after, scope, changes).ToHashSet();
+        return changes.Where(change => !outside.Contains(change)).ToList();
+    }
+
+    private static List<SchemaChange> OutsideChanges(byte[] sourcePackage, byte[] targetPackage, TableDeploymentScope scope, IReadOnlyList<SchemaChange> changes)
+    {
         var allowed = new HashSet<(string Type, string Name)>();
         var anonymous = new HashSet<(string Type, string Name)>();
         foreach (var bytes in new[] { sourcePackage, targetPackage })
@@ -102,11 +119,7 @@ public static class TableDeployment
             && !anonymous.Any(item => item.Type == change.ObjectType && change.Name.EndsWith(": " + item.Name, StringComparison.Ordinal))
             && !(change.Operation == "Create" && change.ObjectType == "SqlSchema" && change.Name == SqlServerDdl.Q(scope.Schema)))
             .ToList();
-        if (outside.Count > 0)
-        {
-            throw new InvalidOperationException("本次变更涉及当前表之外的依赖对象，单表同步已停止。请使用整库比对核对关联影响：\n"
-                + string.Join("\n", outside.Take(8).Select(change => $"{change.Operation} · {change.ObjectType} · {change.Name}")));
-        }
+        return outside;
     }
 
     /// <summary>按 DacFx 的宿主关系判断归属，不把其他表指向当前表的外键算作本表约束。</summary>

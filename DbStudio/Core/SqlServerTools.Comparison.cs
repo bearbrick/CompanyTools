@@ -56,18 +56,17 @@ public sealed partial class SqlServerTools
                 CancelToken = cancellationToken
             }));
             var xml = XDocument.Parse(result.DeploymentReport);
-            var changes = xml.Descendants().Where(e => e.Name.LocalName == "Operation")
-                .SelectMany(operation => operation.Descendants().Where(e => e.Name.LocalName == "Item")
-                    .Select(item => new SchemaChange((string?)operation.Attribute("Name") ?? "", (string?)item.Attribute("Type") ?? "", (string?)item.Attribute("Value") ?? ""))).ToList();
-            if (scope != null && changes.Count > 0)
+            var changes = SchemaDeploymentBoundary.ReadChanges(xml);
+            if (changes.Count > 0)
             {
-                measurement.Run("核验单表同步范围", () => { TableDeployment.ValidateChanges(sourceBytes, targetBytes, scope, changes); return true; });
+                measurement.Run(scope == null ? "核验结构同步范围" : "核验单表同步范围",
+                    () => { SchemaDeploymentBoundary.Validate(sourceBytes, targetBytes, scope, changes); return true; });
             }
             var warnings = DeploymentWarnings.Parse(xml);
             var plan = new DatabasePlan(Guid.NewGuid().ToString("N"), credential.Profile.Database, project.Revision,
                 DateTimeOffset.UtcNow.AddMinutes(15), changes, warnings, result.DatabaseScript, prune, allowDataLoss, scope, measurement.Timings.ToArray());
             store.RequireProject(principal, projectId, ProjectAccess.Database, Permission.Design);
-            plans[plan.Id] = new(plan, projectId, connectionId, credential.Profile.Revision, principal.UserId(), sourceBytes, ModelHash(targetBytes));
+            plans[plan.Id] = new(plan, projectId, connectionId, credential.Profile.Revision, principal.UserId(), sourceBytes, ModelHash(targetBytes), targetBytes);
             store.LogDatabaseOperation(principal, projectId, "生成结构比对", $"{credential.Profile.Name} · {scope?.DisplayName ?? "整库"} · {changes.Count} 项差异");
             return plan;
         }, cancellationToken);

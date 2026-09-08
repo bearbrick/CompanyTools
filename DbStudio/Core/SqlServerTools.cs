@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
-using System.IO.Compression;
 using System.Security.Claims;
-using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
 using Microsoft.Data.SqlClient;
@@ -25,7 +23,7 @@ public record DatabasePlan(string Id, string Database, int ProjectRevision, Date
 public sealed partial class SqlServerTools(StudioStore store)
 {
     private sealed record StoredPlan(DatabasePlan View, string ProjectId, string ConnectionId, int ConnectionRevision,
-        string UserId, byte[] Package, string TargetHash);
+        string UserId, byte[] Package, string TargetHash, byte[] TargetPackage);
     private readonly ConcurrentDictionary<string, StoredPlan> plans = new();
     private readonly SemaphoreSlim executionGate = new(1, 1);
 
@@ -79,11 +77,28 @@ public sealed partial class SqlServerTools(StudioStore store)
             {
                 var service = new DacServices(credential.ConnectionString);
                 var current = Extract(service, credential.Profile.Database, cancellationToken);
-                if (ModelHash(current) != plan.TargetHash)
+                var snapshotChanged = ModelHash(current) != plan.TargetHash;
+                if (snapshotChanged)
                 {
-                    plans.TryRemove(planId, out _);
-                    throw new InvalidOperationException("实际数据库结构已改变，请重新比对后再执行。");
+                    var drift = SchemaDriftCheck.FindChanges(plan.TargetPackage, current, plan.View.Database, project, plan.View.Scope, cancellationToken);
+                    if (drift.Count > 0)
+                    {
+                        plans.TryRemove(planId, out _);
+                        throw new InvalidOperationException((plan.View.Scope == null ? "数据库中的表结构已变化" : "当前表或关联表的结构已变化")
+                            + "，请重新比对后再执行：\n" + string.Join("\n", drift.Take(8).Select(change => $"{change.Operation} · {change.ObjectType} · {change.Name}")));
+                    }
                 }
+                // 无关表有变化时以当前快照重新叠加同一份已保存设计，不能把旧快照中其他表的结构写回。
+                var executionPackage = snapshotChanged && plan.View.Scope != null
+                    ? TableDeployment.BuildPackage(project, plan.View.Scope, current) : plan.Package;
+                using var sourceStream = new MemoryStream(executionPackage);
+                using var source = DacPackage.Load(sourceStream);
+                var options = Options(plan.View.Prune, plan.View.AllowDataLoss);
+                // 直接面向实际连接只读规划，不能只相信省略了用户登录映射的提取快照。
+                var executionReport = XDocument.Parse(service.GenerateDeployReport(source, credential.Profile.Database, options, cancellationToken));
+                var executionChanges = SchemaDeploymentBoundary.ReadChanges(executionReport);
+                SchemaDeploymentBoundary.Validate(executionPackage, current, plan.View.Scope, executionChanges);
+                SchemaDeploymentBoundary.ValidateApproved(plan.View.Changes, executionChanges);
                 if (store.DatabaseProject(principal, projectId).Revision != plan.View.ProjectRevision
                     || store.Credential(principal, projectId, plan.ConnectionId).Profile.Revision != plan.ConnectionRevision)
                 {
@@ -93,12 +108,10 @@ public sealed partial class SqlServerTools(StudioStore store)
                 // 消耗计划后再进入不可重复的部署阶段；失败也必须重新预览。
                 plans.TryRemove(planId, out _);
                 var actor = store.RequireProject(principal, projectId, ProjectAccess.Database, Permission.Design);
-                using var sourceStream = new MemoryStream(plan.Package);
-                using var source = DacPackage.Load(sourceStream);
                 store.LogDatabaseOperation(principal, projectId, "开始同步结构", $"{credential.Profile.Name} · 计划 {planId}");
                 try
                 {
-                    service.Deploy(source, credential.Profile.Database, true, Options(plan.View.Prune, plan.View.AllowDataLoss), cancellationToken);
+                    service.Deploy(source, credential.Profile.Database, true, options, cancellationToken);
                     store.LogDatabaseResult(actor.DisplayName, projectId, "同步结构成功", credential.Profile.Name);
                 }
                 catch
@@ -145,31 +158,9 @@ public sealed partial class SqlServerTools(StudioStore store)
         return stream.ToArray();
     }
 
-    /// <summary>只比较结构模型，排除提取时间等包元信息造成的假变化。</summary>
-    private static string ModelHash(byte[] package)
-    {
-        using var stream = new MemoryStream(package);
-        using var archive = new ZipArchive(stream);
-        using var model = archive.GetEntry("model.xml")!.Open();
-        return Convert.ToHexString(SHA256.HashData(model));
-    }
+    /// <summary>使用稳定结构指纹，避免 DacFx 每次提取的登录密码占位值造成误报。</summary>
+    private static string ModelHash(byte[] package) => SchemaModelFingerprint.Create(package);
 
-    private static DacDeployOptions Options(bool prune, bool allowDataLoss) => new()
-    {
-        CreateNewDatabase = false,
-        BlockOnPossibleDataLoss = !allowDataLoss,
-        IncludeTransactionalScripts = true,
-        DropObjectsNotInSource = prune,
-        DropConstraintsNotInSource = prune,
-        DropIndexesNotInSource = prune,
-        DropDmlTriggersNotInSource = false,
-        ScriptDatabaseOptions = false,
-        IgnorePermissions = true,
-        IgnoreRoleMembership = true,
-        IgnoreColumnOrder = true,
-        CommandTimeout = 120,
-        DatabaseLockTimeout = 30,
-        // 设计器维护表结构；现有视图、过程、账号等对象不因项目缺少定义而被删除。
-        DoNotDropObjectTypes = Enum.GetValues<ObjectType>().Where(t => t != ObjectType.Tables && t != ObjectType.ExtendedProperties && t != ObjectType.Defaults).ToArray()
-    };
+    private static DacDeployOptions Options(bool prune, bool allowDataLoss)
+        => SchemaDeploymentOptions.Create(prune, allowDataLoss);
 }

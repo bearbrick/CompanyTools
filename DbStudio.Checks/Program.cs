@@ -272,6 +272,10 @@ RevisionChecks.Run(store, nextAdmin!, testPath, Check);
 TableCopyChecks.Run(store, nextAdmin!, workerA, Check);
 ModuleOrderChecks.Run(store, nextAdmin!, workerA, Check);
 TableDeploymentChecks.Run(Check);
+SchemaModelFingerprintChecks.Run(Check);
+SchemaDeploymentSecurityChecks.Run(Check);
+SchemaDeploymentBoundaryChecks.Run(Check);
+SchemaDriftChecks.Run(Check);
 await StructureArchiveChecks.RunAsync(store, nextAdmin!, workerA, testPath, Check);
 
 var sourceProblems = imported.Tables.Select(t => new { t.Name, Errors = SqlServerDdl.Validate(imported, t) }).Where(x => x.Errors.Count > 0).ToList();
