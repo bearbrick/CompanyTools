@@ -1,0 +1,33 @@
+@* 模块维护独立于其他项目设置；拖拽与按钮共用保存逻辑。 *@
+<p class="muted">拖动左侧手柄调整顺序，也可使用上下箭头。调整后自动保存，左侧清单同步更新。</p>
+@if (problem != "") { <p class="settings-error" role="alert">@problem</p> }
+<p class="module-order-status muted" role="status">@notice</p>
+<div class="module-order-list" role="list" aria-label="模块排序" @ref="listElement">
+    @foreach (var module in OrderedModules)
+    {
+        var index = OrderedModules.IndexOf(module);
+        <div @key="module" class="module-order-row" data-module="@module" role="listitem">
+            <button type="button" class="module-drag-handle"
+                    disabled="@(!CanEdit || busy)" aria-label="@($"拖动模块 {module}")" title="拖动调整模块顺序">⠿</button>
+            <span class="module-order-number">@(index + 1)</span>
+            <span class="module-order-name"><b title="@module">@module</b><small>@Project.Tables.Count(table => table.Module == module) 张表</small></span>
+            <button type="button" class="icon-button" aria-label="@($"上移模块 {module}")" title="上移"
+                    disabled="@(!CanEdit || busy || index == 0)" @onclick="() => MoveAsync(module, index - 1)"><Icon Name="arrow-up" /></button>
+            <button type="button" class="icon-button" aria-label="@($"下移模块 {module}")" title="下移"
+                    disabled="@(!CanEdit || busy || index == OrderedModules.Count - 1)" @onclick="() => MoveAsync(module, index + 1)"><Icon Name="arrow-down" /></button>
+            <button type="button" class="text-button" disabled="@(!CanEdit || busy)"
+                    @onclick="() => BeginRename(module)">重命名</button>
+        </div>
+    }
+    @if (OrderedModules.Count == 0) { <p class="muted">还没有模块，可以在下方创建。</p> }
+</div>
+@if (CanEdit)
+{
+    <form @onsubmit="SaveNameAsync" @onsubmit:preventDefault>
+        <label>@(oldName == null ? "新模块名称" : "修改模块名称")<input aria-label="模块名称" @bind="moduleName" @bind:event="oninput" maxlength="100" placeholder="例如：采购管理" disabled="@busy" /></label>
+        <div class="modal-footer">
+            <button type="button" class="text-button" disabled="@busy" @onclick="ClearName">清空</button>
+            <button type="submit" class="primary" disabled="@(busy || string.IsNullOrWhiteSpace(moduleName))">@(oldName == null ? "创建模块" : "保存模块名称")</button>
+        </div>
+    </form>
+}

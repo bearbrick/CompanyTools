@@ -38,6 +38,6 @@ public class DesignProject
     /// </summary>
     public List<TableDesign> Tables { get; set; } = [];
 
-    /// <summary>独立模块名称，允许尚未包含数据表的空模块。</summary>
+    /// <summary>按显示顺序保存的模块名称；数组位置即排序序号，允许空模块。</summary>
     public List<string> Modules { get; set; } = [];
 }

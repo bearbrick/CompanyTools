@@ -165,7 +165,7 @@ public sealed partial class StudioStore
             using var db = Open();
             using var tx = db.BeginTransaction();
             var project = ReadProject(db, projectId);
-            var modules = project.Modules.Concat(project.Tables.Select(t => t.Module)).Distinct().ToList();
+            var modules = ModuleOrdering.Names(project);
             if (modules.Any(m => m.Equals(name, StringComparison.OrdinalIgnoreCase) && m != oldName))
             {
                 throw new InvalidOperationException("模块名称已存在。");
@@ -181,7 +181,16 @@ public sealed partial class StudioStore
                 tx.Commit();
                 return project;
             }
-            project.Modules = modules.Where(m => m != oldName).Append(name).ToList();
+            // 重命名原位替换，新增模块追加末尾，保留用户安排的显示顺序。
+            if (oldName == null)
+            {
+                modules.Add(name);
+            }
+            else
+            {
+                modules[modules.IndexOf(oldName)] = name;
+            }
+            project.Modules = modules;
             foreach (var table in project.Tables.Where(t => t.Module == oldName))
             {
                 table.Module = name;

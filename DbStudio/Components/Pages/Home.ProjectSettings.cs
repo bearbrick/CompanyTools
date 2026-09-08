@@ -63,7 +63,7 @@ public partial class Home
             {
                 yield break;
             }
-            foreach (var module in project.Modules.Concat(project.Tables.Select(t => t.Module)).Distinct())
+            foreach (var module in ModuleOrdering.Names(project))
             {
                 var tables = project.Tables.Where(t => t.Module == module && (search == "" || t.Name.Contains(search, StringComparison.OrdinalIgnoreCase) || t.Label.Contains(search, StringComparison.OrdinalIgnoreCase) || t.Columns.Any(c => c.Name.Contains(search, StringComparison.OrdinalIgnoreCase) || c.Label.Contains(search, StringComparison.OrdinalIgnoreCase)))).ToList();
                 if (search == "" || tables.Count > 0)

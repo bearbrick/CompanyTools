@@ -25,8 +25,8 @@ public partial class Home
     /// <summary>
     /// 模块允许选择已有名称，也允许输入新名称。
     /// </summary>
-    private List<SelectOption> ModuleOptions => (project?.Modules ?? []).Concat((project?.Tables ?? [])
-        .Select(item => item.Module)).Distinct().Select(name => new SelectOption(name, name)).ToList();
+    private List<SelectOption> ModuleOptions => project == null ? [] : ModuleOrdering.Names(project)
+        .Select(name => new SelectOption(name, name)).ToList();
 
     /// <summary>
     /// 外键本表字段建议；允许输入逗号分隔的复合字段列表。

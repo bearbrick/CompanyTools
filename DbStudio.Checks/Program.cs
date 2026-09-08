@@ -270,6 +270,7 @@ ConnectionChecks.Run(store, workerA, workerB, projectA, projectB, testPath, Chec
 await SharePageChecks.RunAsync(Check);
 RevisionChecks.Run(store, nextAdmin!, testPath, Check);
 TableCopyChecks.Run(store, nextAdmin!, workerA, Check);
+ModuleOrderChecks.Run(store, nextAdmin!, workerA, Check);
 
 var sourceProblems = imported.Tables.Select(t => new { t.Name, Errors = SqlServerDdl.Validate(imported, t) }).Where(x => x.Errors.Count > 0).ToList();
 Check("All imported tables pass supported structural validation", sourceProblems.Count == 0);

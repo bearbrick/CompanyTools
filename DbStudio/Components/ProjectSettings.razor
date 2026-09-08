@@ -26,18 +26,7 @@
 }
 @if (section == "modules")
 {
-    <p class="muted">可以先创建空模块。重命名会同时更新模块内的全部表。</p>
-    <div class="settings-list">
-    @foreach (var module in Project.Modules.Concat(Project.Tables.Select(t => t.Module)).Distinct())
-    {
-        <div><span><b>@module</b><small>@Project.Tables.Count(t => t.Module == module) 张表</small></span><button class="text-button" disabled="@(!design)" @onclick="() => { oldModule = module; moduleName = module; }">重命名</button></div>
-    }
-    </div>
-    @if (design)
-    {
-        <label>@(oldModule == null ? "新模块名称" : "修改模块名称")<input @bind="moduleName" @bind:event="oninput" maxlength="100" placeholder="例如：采购管理" /></label>
-        <div class="modal-footer"><button class="text-button" @onclick='() => { oldModule = null; moduleName = ""; }'>清空</button><button class="primary" @onclick="SaveModule">@(oldModule == null ? "创建模块" : "保存模块名称")</button></div>
-    }
+    <ProjectModules Project="Project" Principal="Principal" CanEdit="design" Saved="Saved" />
 }
 @if (section == "members" && manage)
 {
@@ -75,8 +64,7 @@
     [Parameter] public EventCallback<DesignProject> Saved { get; set; }
     [Parameter] public string InitialSection { get; set; } = "info";
     private string section = "info", name = "", description = "", problem = "", notice = "";
-    private string memberLogin = "", memberAccess = "1", moduleName = "", shareName = "结构评审", shareDays = "30", shareUrl = "";
-    private string? oldModule;
+    private string memberLogin = "", memberAccess = "1", shareName = "结构评审", shareDays = "30", shareUrl = "";
     private bool manage, design, export;
     private List<ProjectMember> members = [];
     private List<ProjectShare> shares = [];
@@ -117,13 +105,6 @@
         DesignProject? updated = null;
         Handle(() => updated = Store.UpdateProject(Principal, Project.Id, Project.Revision, name, description));
         if (updated != null) { await Saved.InvokeAsync(updated); notice = "项目信息已保存"; }
-    }
-
-    private async Task SaveModule()
-    {
-        DesignProject? updated = null;
-        Handle(() => updated = Store.SaveModule(Principal, Project.Id, Project.Revision, oldModule, moduleName));
-        if (updated != null) { await Saved.InvokeAsync(updated); oldModule = null; moduleName = ""; notice = "模块已保存"; }
     }
 
     private void SaveMember() => Handle(() => { Store.SaveProjectMember(Principal, Project.Id, memberLogin, (ProjectAccess)int.Parse(memberAccess)); ReloadLists(); notice = "成员权限已保存"; });

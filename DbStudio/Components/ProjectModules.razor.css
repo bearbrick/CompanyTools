@@ -1,0 +1,12 @@
+.module-order-status { min-height: 18px; margin: 6px 0; color: #347451; font-size: 12px; }
+.module-order-list { max-height: min(300px, 32vh); overflow: auto; border-top: 1px solid #e7edf5; }
+.module-order-row { display: flex; align-items: center; gap: 8px; min-height: 60px; padding: 8px 4px; border-bottom: 1px solid #e7edf5; border-top: 2px solid transparent; }
+.module-order-row.dragging { opacity: .45; }
+.module-order-row.drop-target { border-top-color: #1757d5; background: #eef4ff; }
+.module-drag-handle { border: 0; background: transparent; color: #8393aa; font-size: 22px; padding: 4px; cursor: grab; touch-action: none; }
+.module-drag-handle:active { cursor: grabbing; }
+.module-order-number { color: #8999b0; min-width: 20px; font: 12px Consolas, monospace; text-align: center; }
+.module-order-name { flex: 1; min-width: 0; }
+.module-order-name b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.module-order-name small { display: block; color: #8796aa; font-size: 11px; margin-top: 4px; }
+.module-order-row button { flex-shrink: 0; }
