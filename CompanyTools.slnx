@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="DbStudio.Checks/DbStudio.Checks.csproj" />
+  <Project Path="DbStudio/DbStudio.csproj" />
+</Solution>

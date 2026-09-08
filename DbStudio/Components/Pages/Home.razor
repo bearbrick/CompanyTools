@@ -1,0 +1,330 @@
+@page "/"
+@attribute [Authorize]
+<PageTitle>数据库设计工作台 · DB Studio</PageTitle>
+@if (user != null)
+{
+<div class="app-shell">
+    <header class="topbar">
+        <a class="brand" href="/"><Icon Name="database" /><b>DB Studio</b></a>
+        <span class="brand-sub">数据库设计工作台</span>
+        <span class="header-divider"></span>
+        <StudioSelect Class="project-picker" Label="选择项目" Value="@project?.Id" ValueChanged="ChooseProject" Items="ProjectOptions" />
+        <button class="project-settings-entry" disabled="@(project == null)" @onclick="() => OpenProjectSettings()"><Icon Name="pencil" /> 项目设置</button>
+        <div class="header-actions">
+            <button @onclick='() => menu = menu == "export" ? "" : "export"'><Icon Name="box-arrow-up-right" /> 备份与导入 <Icon Name="chevron-down" /></button>
+            <button @onclick='() => menu = menu == "tools" ? "" : "tools"'><Icon Name="database-gear" /> 数据库工具 <Icon Name="chevron-down" /></button>
+            @if (Can(Permission.Security)) { <button @onclick="Security"><Icon Name="shield-check" /> 权限管理</button> }
+            <button class="account" @onclick='() => menu = menu == "account" ? "" : "account"'><span class="avatar">@user.DisplayName[..1]</span><span>@user.DisplayName</span><Icon Name="chevron-down" /></button>
+        </div>
+        @if (menu != "")
+        {
+            <div class="dropdown @(menu == "tools" ? "tools-menu" : "")">
+            @if (menu == "export")
+            {
+                <h4>项目备份与迁移</h4>
+                <button disabled="@(!CanExport || project == null)" @onclick="ExportJson"><Icon Name="download" /> 项目备份（JSON）</button>
+                <button disabled="@(!CanExport || table == null)" @onclick="DownloadSql"><Icon Name="filetype-sql" /> 当前表 SQL 脚本</button>
+                @if (Can(Permission.Projects | Permission.Design))
+                {
+                    <button @onclick="OpenImport"><Icon Name="folder2" /> 导入项目备份</button>
+                }
+                <small>项目备份导出已保存内容；SQL 使用当前编辑内容。</small>
+            }
+            @if (menu == "tools")
+            {
+                <h4>SQL Server 数据库工具</h4>
+                <button disabled="@(!projectAccess.HasFlag(ProjectAccess.Database) || !Can(Permission.Design))" @onclick="OpenDatabaseTools"><Icon Name="database-gear" /> 连接、反推与结构同步</button>
+                <small>仅当前项目的数据库维护成员可以使用。</small>
+            }
+            @if (menu == "account")
+            {
+                <h4>@user.DisplayName <span>@user.RoleName</span></h4>
+                <button @onclick='() => { modal = "password"; menu = ""; oldPassword = newPassword = ""; }'><Icon Name="key" /> 修改密码</button>
+                <form method="post" action="/auth/logout"><AntiforgeryToken /><button type="submit"><Icon Name="box-arrow-right" /> 退出登录</button></form>
+            }
+            </div>
+        }
+    </header>
+    <div class="workspace">
+        <aside class="sidebar">
+            <div class="sidebar-heading"><h2>数据表</h2><button class="text-button" disabled="@(!CanDesign || project == null)" @onclick="NewTable"><Icon Name="plus-lg" /> 新建表</button></div>
+            <div class="search-box"><Icon Name="search" /><input placeholder="搜索表名或字段…" aria-label="搜索表名或字段" @bind="search" @bind:event="oninput" /><kbd>/</kbd></div>
+            <button class="module-manage-entry text-button" disabled="@(!CanDesign || project == null)" @onclick='() => OpenProjectSettings("modules")'>＋ 新建 / 管理模块</button>
+            <nav class="table-tree" aria-label="数据表清单">
+            @foreach (var group in ModuleGroups)
+            {
+                <button class="module-row" @onclick="() => Toggle(group.Key)"><Icon Name="@(collapsed.Contains(group.Key) && search == "" ? "chevron-right" : "chevron-down")" /><Icon Name="folder2" /><span>@group.Key</span><small>@group.Tables.Count</small></button>
+                @if (!collapsed.Contains(group.Key) || search != "")
+                {
+                    @foreach (var t in group.Tables)
+                    {
+                        <button class="table-item @(table?.Id == t.Id && view == "design" ? "active" : "")" @onclick="() => ChooseTable(t)" title="@t.Name"><span>@t.Label</span><small>@t.Name</small></button>
+                    }
+                }
+            }
+            @if (!ModuleGroups.Any()) { <p class="muted empty-search">没有匹配的数据表</p> }
+            </nav>
+            <div class="sidebar-footer"><span><Icon Name="database" /> @(project?.Tables.Count ?? 0) 张表</span><button title="刷新项目" aria-label="刷新项目" @onclick="Refresh"><Icon Name="arrow-clockwise" /></button></div>
+            @if (Can(Permission.Projects)) { <button class="project-add" @onclick="OpenNewProject"><Icon Name="plus-lg" /> 创建项目</button> }
+        </aside>
+        <main class="main-content">
+        @if (view == "database" && project != null)
+        {
+            <DatabaseToolsPanel @key="project.Id" Project="project" Principal="principal" Saved="ProjectSettingsSaved" BusyChanged="value => databaseBusy = value" />
+        }
+        else if (view == "security")
+        {
+            <section class="page-heading"><div class="breadcrumb">工作台 / 团队管理</div><div class="title-row"><div><h1>用户与角色 <span class="subtle-tag">RBAC</span></h1><p class="muted">统一管理成员及其操作权限。账号角色限定操作范围，项目成员权限决定可访问的项目。</p></div><button @onclick='() => view = "design"'><Icon Name="arrow-left" /> 返回设计</button></div></section>
+            <section class="security-section">
+                <div class="section-title"><h2>团队成员 <span>@users.Count</span></h2><button class="primary" @onclick="() => EditUser()"><Icon Name="plus-lg" /> 添加成员</button></div>
+                <table class="list-table"><thead><tr><th>成员</th><th>账号</th><th>角色</th><th>状态</th><th></th></tr></thead><tbody>
+                @foreach (var u in users)
+                {
+                    <tr><td><span class="member-avatar">@u.DisplayName[..1]</span>@u.DisplayName</td><td class="mono">@u.Login</td><td>@roles.FirstOrDefault(r => r.Id == u.RoleId)?.Name</td><td><span class="status @(u.Enabled ? "ok" : "")">@(u.Enabled ? "已启用" : "已禁用")</span></td><td><button class="text-button" @onclick="() => EditUser(u)">编辑</button></td></tr>
+                }
+                </tbody></table>
+                <div class="section-title role-title"><h2>角色与权限 <span>@roles.Count</span></h2><button @onclick="() => EditRole()"><Icon Name="plus-lg" /> 新增角色</button></div>
+                <table class="list-table"><thead><tr><th>角色</th>@foreach (var permission in PermissionList) { <th>@PermissionName(permission)</th> }<th></th></tr></thead><tbody>
+                @foreach (var r in roles)
+                {
+                    <tr><td><strong>@r.Name</strong></td>@foreach (var permission in PermissionList) { <td><input type="checkbox" checked="@((r.Permissions & permission) != 0)" disabled aria-label="@PermissionName(permission)" /></td> }<td><button class="text-button" disabled="@(r.Id == "admin")" @onclick="() => EditRole(r)">@(r.Id == "admin" ? "系统内置" : "编辑权限")</button></td></tr>
+                }
+                </tbody></table>
+            </section>
+        }
+        else if (table != null && project != null)
+        {
+            <section class="page-heading design-heading">
+                <div class="breadcrumb">@project.Name <span>/</span> @table.Module <span class="revision">r@(project.Revision)</span><span class="dialect">SQL Server</span></div>
+                <div class="title-row">
+                    <div class="table-identity"><h1>@table.Label</h1><div class="physical-name"><span class="mono" title="@($"{table.Schema}.{table.Name}")">@table.Schema.@table.Name</span><button class="icon-button" aria-label="编辑表信息" disabled="@(!CanDesign)" @onclick='() => modal = "table"'><Icon Name="pencil" /></button></div></div>
+                    <div class="save-actions"><span class="save-state @(dirty ? "unsaved" : "")"><span class="state-dot"></span>@(dirty ? "有未保存修改" : "所有更改已保存")</span><button class="text-button" @onclick="CheckDesign"><Icon Name="shield-check" /> 检查设计</button><button class="text-button" disabled="@(!dirty)" @onclick="Refresh">撤销</button><button class="primary save-button" disabled="@(!CanDesign)" @onclick="Save"><Icon Name="floppy" /> 保存设计 <kbd>Ctrl S</kbd></button></div>
+                </div>
+                <div class="table-meta"><span class="table-note" title="@table.Comment">备注 <b>@(table.Comment == "" ? "暂无备注" : table.Comment)</b></span><button class="text-button muted" disabled="@(!CanDesign)" @onclick='() => modal = "table"'>编辑信息 <Icon Name="pencil" /></button><button class="text-button duplicate-table" disabled="@(!CanDesign)" @onclick="DuplicateTable"><Icon Name="copy" /> 复制表结构</button></div>
+            </section>
+            <nav class="tabs" aria-label="表设计选项">
+                <button class="@(tab == "fields" ? "active" : "")" @onclick='() => OpenTab("fields")'>字段定义 <span>@table.Columns.Count</span></button>
+                <button class="@(tab == "indexes" ? "active" : "")" @onclick='() => OpenTab("indexes")'>索引 <span>@table.Indexes.Count</span></button>
+                <button class="@(tab == "foreign" ? "active" : "")" @onclick='() => OpenTab("foreign")'>外键关系 <span>@table.ForeignKeys.Count</span></button>
+                <button class="@(tab == "checks" ? "active" : "")" @onclick='() => OpenTab("checks")'>检查约束 <span>@table.Checks.Count</span></button>
+                @if (CanExport) { <button class="@(tab == "sql" ? "active" : "")" @onclick='() => OpenTab("sql")'><Icon Name="code-slash" /> SQL 预览</button> }
+                <button class="@(tab == "history" ? "active" : "")" @onclick='() => OpenTab("history")'>变更记录</button>
+            </nav>
+            @if (!CanDesign) { <div class="readonly-note"><Icon Name="lock" /> 当前为只读权限，可浏览项目和结构定义。</div> }
+            @if (tab == "fields")
+            {
+                <div class="grid-toolbar">
+                    <button disabled="@(!CanDesign)" @onclick="AddColumn"><Icon Name="plus-lg" /> 新增字段</button>
+                    <button disabled="@(!CanDesign || selected.Count == 0)" @onclick="CopyColumns"><Icon Name="copy" /> 复制行</button>
+                    <button disabled="@(!CanDesign || selected.Count == 0)" @onclick="DeleteColumns"><Icon Name="trash3" /> 删除</button>
+                    <span class="toolbar-divider"></span>
+                    <button class="icon-button" disabled="@(!CanDesign || selected.Count != 1)" title="上移字段" aria-label="上移字段" @onclick="() => MoveColumn(-1)"><Icon Name="arrow-up" /></button>
+                    <button class="icon-button" disabled="@(!CanDesign || selected.Count != 1)" title="下移字段" aria-label="下移字段" @onclick="() => MoveColumn(1)"><Icon Name="arrow-down" /></button>
+                    <button class="text-button" disabled="@(!CanDesign)" @onclick='() => { paste = ""; modal = "paste"; }'><Icon Name="clipboard" /> 批量粘贴</button>
+                    <div class="toolbar-spacer"></div>
+                    <div class="search-box field-search"><Icon Name="search" /><input placeholder="查找字段…" aria-label="查找字段" @bind="fieldSearch" @bind:event="oninput" /></div>
+                </div>
+                <div class="grid-area"><div class="grid-scroll">
+                <fieldset disabled="@(!CanDesign)">
+                    <table class="field-grid">
+                    <colgroup><col style="width:30px"/><col style="width:32px"/><col style="width:170px"/><col style="width:125px"/><col style="width:145px"/><col style="width:55px"/><col style="width:55px"/><col style="width:45px"/><col style="width:45px"/><col style="width:90px"/><col style="width:75px"/><col style="width:170px"/><col style="width:45px"/></colgroup>
+                    <thead><tr><th><input type="checkbox" aria-label="选择全部字段" @onchange="e => SelectAll((bool)e.Value!)" /></th><th>#</th><th>字段名</th><th>定义名</th><th>类型</th><th>长度</th><th>小数</th><th>非空</th><th>主键</th><th>默认值</th><th>输入位数</th><th>备注</th><th>高级</th></tr></thead>
+                    <tbody>
+                    @foreach (var c in VisibleColumns)
+                    {
+                        <tr @key="c.Id" class="@(selected.Contains(c.Id) ? "selected" : "")">
+                        <td><input type="checkbox" aria-label="@("选择字段 " + c.Name)" checked="@selected.Contains(c.Id)" @onchange="e => Select(c.Id, (bool)e.Value!)" @onchange:stopPropagation @oninput:stopPropagation /></td>
+                        <td class="row-number">@(table.Columns.IndexOf(c) + 1)</td>
+                        <td><input class="mono" aria-label="@("字段名 " + c.Name)" @bind="c.Name" @bind:after="MarkDirty" @bind:event="oninput" /></td>
+                        <td><input aria-label="@("定义名 " + c.Name)" @bind="c.Label" @bind:after="MarkDirty" @bind:event="oninput" /></td>
+                        <td><StudioSelect Class="type-picker" Label="@("类型 " + c.Name)" @bind-Value="c.Type" @bind-Value:after="MarkDirty" Items="TypeOptions" /></td>
+                        <td>@if (SqlServerDdl.HasLength(c.Type)) { <input aria-label="@("长度 " + c.Name)" @bind="c.Length" @bind:after="MarkDirty" @bind:event="oninput" /> } else if (c.Type is "decimal" or "numeric") { <input type="number" aria-label="@("精度 " + c.Name)" @bind="c.Precision" @bind:after="MarkDirty" @bind:event="oninput" /> } else { <span class="dash">—</span> }</td>
+                        <td>@if (c.Type is "decimal" or "numeric") { <input type="number" aria-label="@("小数 " + c.Name)" @bind="c.Scale" @bind:after="MarkDirty" @bind:event="oninput" /> } else { <span class="dash">—</span> }</td>
+                        <td><input type="checkbox" aria-label="@("非空 " + c.Name)" checked="@(!c.Nullable)" @onchange="e => SetNullable(c, !(bool)e.Value!)" /></td>
+                        <td><input type="checkbox" aria-label="@("主键 " + c.Name)" checked="@(c.PrimaryKeyOrder > 0)" @onchange="e => SetPk(c,(bool)e.Value!)" /></td>
+                        <td><input class="mono" aria-label="@("默认值 " + c.Name)" @bind="c.Default" @bind:after="MarkDirty" @bind:event="oninput" placeholder="—" /></td>
+                        <td><input aria-label="@("输入位数 " + c.Name)" @bind="c.InputLimit" @bind:after="MarkDirty" @bind:event="oninput" placeholder="—" /></td>
+                        <td><input aria-label="@("备注 " + c.Name)" title="@c.Comment" @bind="c.Comment" @bind:after="MarkDirty" @bind:event="oninput" placeholder="—" /></td>
+                        <td><button class="icon-button @(c.Identity || c.Computed != "" ? "accent" : "")" aria-label="@("高级设置 " + c.Name)" @onclick='() => { advanced = c; modal = "column"; }'><Icon Name="sliders" /></button></td>
+                        </tr>
+                    }
+                    </tbody></table>
+                </fieldset>
+                @if (!VisibleColumns.Any()) { <div class="empty-grid">没有匹配字段，请调整搜索或新增字段。</div> }
+                </div><button class="add-row" disabled="@(!CanDesign)" @onclick="AddColumn"><Icon Name="plus-lg" /> 添加一行</button>
+                </div>
+                <footer class="grid-footer"><span>共 @table.Columns.Count 个字段 · 已选 @selected.Count 行</span><span>Tab 切换单元格 <i>Enter 下一行</i> <i>高级设置支持自增 / 计算列</i></span></footer>
+            }
+            @if (tab is "indexes" or "foreign" or "checks")
+            {
+                <div class="constraint-content">
+                    <div class="section-title"><div><h2>@(tab == "indexes" ? "索引与唯一约束" : tab == "foreign" ? "外键关系" : "检查约束")</h2><p class="muted">@(tab == "indexes" ? "组合列按填写顺序生成；包含列和过滤条件用于普通索引。" : tab == "foreign" ? "选择引用表，建立字段关系。复合字段用英文逗号分隔，按顺序一一对应。" : "使用 SQL 表达式限制字段值，例如 [Quantity] > 0。")</p></div><button class="primary" disabled="@(!CanDesign)" @onclick="AddConstraint"><Icon Name="plus-lg" /> 新增</button></div>
+                    <fieldset disabled="@(!CanDesign)">
+                    @if (tab == "indexes")
+                    {
+                        @foreach (var ix in table.Indexes)
+                        {
+                            <div class="constraint-editor"><div class="constraint-header"><Icon Name="list-columns" /><input aria-label="索引名称" @bind="ix.Name" @bind:after="MarkDirty" @bind:event="oninput" /><button class="icon-button danger" aria-label="删除索引" @onclick="() => { table.Indexes.Remove(ix); MarkDirty(); }"><Icon Name="trash3" /></button></div>
+                            <div class="form-grid"><label>键列（英文逗号分隔）<input @bind="ix.Columns" @bind:after="MarkDirty" @bind:event="oninput" placeholder="CustNum, Name" /></label><label>降序键列<input @bind="ix.DescendingColumns" @bind:after="MarkDirty" @bind:event="oninput" placeholder="可选，例如 CreatedAt" /></label><label>包含列<input @bind="ix.Include" @bind:after="MarkDirty" @bind:event="oninput" placeholder="可选，例如 Remark" /></label><label class="wide">过滤条件<input class="mono" @bind="ix.Filter" @bind:after="MarkDirty" @bind:event="oninput" placeholder="可选，例如 [IsDeleted] = 0" /></label></div><div class="check-row"><label><input type="checkbox" @bind="ix.Unique" @bind:after="MarkDirty" /> 唯一</label><label><input type="checkbox" @bind="ix.IsConstraint" @bind:after="MarkDirty" /> 唯一约束（UNIQUE）</label><label><input type="checkbox" @bind="ix.Clustered" @bind:after="MarkDirty" /> 聚集索引</label></div></div>
+                        }
+                        @if (table.Indexes.Count == 0) { <div class="empty-state"><Icon Name="list-columns" /><h3>为常用查询定义索引</h3><p>支持复合索引、唯一约束、包含列与过滤条件。<br />主键由字段定义中的主键设置生成。</p></div> }
+                    }
+                    @if (tab == "foreign")
+                    {
+                        @foreach (var fk in table.ForeignKeys)
+                        {
+                            <div class="constraint-editor"><div class="constraint-header"><Icon Name="diagram-3" /><input aria-label="外键名称" @bind="fk.Name" @bind:after="MarkDirty" @bind:event="oninput" /><button class="icon-button danger" aria-label="删除外键" @onclick="() => { table.ForeignKeys.Remove(fk); MarkDirty(); }"><Icon Name="trash3" /></button></div>
+                            <div class="relationship-label"><span>@table.Name</span><Icon Name="arrow-right" /><span>@(project.Tables.FirstOrDefault(t => t.Id == fk.TargetTableId)?.Name ?? "选择引用表")</span></div>
+                            <div class="form-grid"><label>本表字段<StudioSelect Label="本表字段" Placeholder="选择字段" @bind-Value="fk.Columns" @bind-Value:after="MarkDirty" Items="LocalColumnOptions" AllowCustom="true" SearchPlaceholder="搜索字段；复合字段用逗号分隔…" /></label><label>引用表<StudioSelect Label="引用表" Placeholder="选择引用表" @bind-Value="fk.TargetTableId" @bind-Value:after="MarkDirty" Items="TableOptions" /></label><label>引用字段<input @bind="fk.TargetColumns" @bind:after="MarkDirty" @bind:event="oninput" placeholder="例如 Id；须为目标主键或唯一键" /></label><label>删除规则<StudioSelect Label="删除规则" @bind-Value="fk.OnDelete" @bind-Value:after="MarkDirty" Items="ActionOptions" /></label><label>更新规则<StudioSelect Label="更新规则" @bind-Value="fk.OnUpdate" @bind-Value:after="MarkDirty" Items="ActionOptions" /></label></div></div>
+                        }
+                        @if (table.ForeignKeys.Count == 0) { <div class="empty-state"><Icon Name="diagram-3" /><h3>把表之间的关系定义清楚</h3><p>新增外键，关联本表与目标表的字段。<br />从 Excel 导入的备注保留原文，不会自动转成外键。</p></div> }
+                    }
+                    @if (tab == "checks")
+                    {
+                        @foreach (var ck in table.Checks)
+                        {
+                            <div class="constraint-editor"><div class="constraint-header"><Icon Name="shield-check" /><input aria-label="检查约束名称" @bind="ck.Name" @bind:after="MarkDirty" @bind:event="oninput" /><button class="icon-button danger" aria-label="删除检查约束" @onclick="() => { table.Checks.Remove(ck); MarkDirty(); }"><Icon Name="trash3" /></button></div><label>SQL 检查表达式<textarea class="mono" rows="3" @bind="ck.Expression" @bind:after="MarkDirty" @bind:event="oninput" placeholder="[Quantity] >= 0"></textarea></label></div>
+                        }
+                        @if (table.Checks.Count == 0) { <div class="empty-state"><Icon Name="shield-check" /><h3>为数据定义明确的边界</h3><p>用 CHECK 约束表达取值范围与字段之间的条件。</p></div> }
+                    }
+                    </fieldset>
+                </div>
+            }
+            @if (tab == "sql")
+            {
+                <div class="sql-toolbar"><span><Icon Name="filetype-sql" /> @table.Schema.@(table.Name).sql <small>基于当前编辑内容</small></span><div><button @onclick="GenerateSql"><Icon Name="arrow-clockwise" /> 重新生成</button><button disabled="@(sql == "")" @onclick="CopySql"><Icon Name="copy" /> 复制</button><button class="primary" @onclick="DownloadSql"><Icon Name="download" /> 下载 SQL</button></div></div>
+                <div class="sql-notice">仅生成脚本，不执行。引用表需预先存在；表达式、索引限制和级联路径需在目标 SQL Server 验证。</div>
+                <pre class="sql-code"><code>@sql</code></pre>
+            }
+            @if (tab == "history")
+            {
+                <div class="constraint-content"><div class="section-title"><div><h2>操作记录</h2><p class="muted">当前项目最近 100 条操作，按时间倒序排列。</p></div><button @onclick="() => audit = Store.Audit(principal, project.Id)"><Icon Name="arrow-clockwise" /> 刷新</button></div><table class="list-table"><thead><tr><th>时间</th><th>操作人</th><th>操作</th><th>内容</th></tr></thead><tbody>@foreach (var entry in audit) { <tr><td>@DateTimeOffset.Parse(entry.Time).ToLocalTime().ToString("MM-dd HH:mm:ss")</td><td>@entry.Actor</td><td>@entry.Action</td><td>@entry.Detail</td></tr> }</tbody></table>@if (audit.Count == 0) { <div class="empty-state">尚无操作记录</div> }</div>
+            }
+        }
+        else
+        {
+            <div class="empty-state project-empty"><Icon Name="database" /><span class="eyebrow">开始设计</span><h1>@project?.Name</h1><p>从第一张表开始，为项目建立完整的数据库定义。</p><button class="primary" disabled="@(!CanDesign)" @onclick="NewTable"><Icon Name="plus-lg" /> 新建数据表</button></div>
+        }
+        </main>
+    </div>
+    @if (message != "") { <div class="toast" role="status"><Icon Name="check-circle" /> @message<button class="icon-button" aria-label="关闭提示" @onclick='() => message = ""'><Icon Name="x-lg" /></button></div> }
+    @if (error != "") { <div class="error-panel" role="alert"><strong>操作未完成</strong><button class="icon-button" aria-label="关闭错误" @onclick='() => error = ""'><Icon Name="x-lg" /></button><pre>@error</pre></div> }
+</div>
+@if (modal != "")
+{
+<div class="modal-backdrop">
+<section class="modal @(modal == "column" ? "drawer" : "")" role="dialog" aria-modal="true" aria-label="编辑窗口">
+<div class="modal-heading"><div><span class="eyebrow">DB STUDIO</span><h2>@(modal switch { "table" => "表信息", "column" => "字段高级设置", "project" => "创建项目", "settings" => "项目设置", "paste" => "批量粘贴字段", "user" => "成员设置", "role" => "角色权限", "password" => "修改密码", "validation" => "设计检查", "import" => "导入项目备份", _ => "" })</h2></div><button class="icon-button" aria-label="关闭窗口" @onclick='() => modal = ""'><Icon Name="x-lg" /></button></div>
+@if (modal == "settings" && project != null)
+{
+    <ProjectSettings Project="project" Principal="principal" Saved="ProjectSettingsSaved" InitialSection="@settingsSection" />
+}
+@if (modal == "import")
+{
+    <p class="muted">选择 DB Studio 导出的 JSON，或直接粘贴备份内容。导入会创建独立项目。</p>
+    <label class="import-file">选择备份文件（最大 10 MB）<InputFile OnChange="ReadImportFile" accept=".json,application/json" disabled="@importReading" /></label>
+    @if (importReading) { <p role="status" class="muted">正在读取并检查备份…</p> }
+    <details class="import-json" open="@(importPreview == null)">
+        <summary>备份内容（可粘贴或编辑 JSON）</summary>
+        <label>备份 JSON<textarea class="mono" rows="3" @bind="importJson" @bind:event="oninput" @bind:after="InvalidateImport" disabled="@importReading" placeholder="粘贴完整项目 JSON…"></textarea></label>
+    </details>
+    <button @onclick="PreviewImport" disabled="@(importReading || string.IsNullOrWhiteSpace(importJson))"><Icon Name="shield-check" /> 检查并预览</button>
+    @if (importPreview != null)
+    {
+        <div class="import-preview">
+            <div class="import-counts"><strong>@importPreview.Project.Tables.Count <small>张表</small></strong><strong>@importPreview.Project.Tables.Sum(t => t.Columns.Count) <small>个字段</small></strong><strong>@importPreview.Project.Tables.Sum(t => t.ForeignKeys.Count) <small>个外键</small></strong></div>
+            @if (importPreview.Errors.Count > 0)
+            {
+                <p class="import-problems" role="alert">发现 @importPreview.Errors.Count 项问题，请修正备份后重新预览。</p>
+                <ol class="validation-list">@foreach (var issue in importPreview.Errors) { <li>@issue</li> }</ol>
+            }
+            else
+            {
+                <p class="import-ready" role="status"><Icon Name="check-circle" /> 结构检查通过，可以导入</p>
+                <div class="import-tables"><table class="list-table"><thead><tr><th>表名称</th><th>字段</th><th>外键</th></tr></thead><tbody>
+                    @foreach (var item in importPreview.Project.Tables)
+                    {
+                        <tr><td>@item.Label<small class="mono">@item.Schema.@item.Name</small></td><td>@item.Columns.Count</td><td>@item.ForeignKeys.Count</td></tr>
+                    }
+                </tbody></table></div>
+                <label class="import-name">新项目名称<input @bind="importName" @bind:event="oninput" maxlength="100" /></label>
+            }
+        </div>
+    }
+    <div class="modal-footer"><span class="muted">项目和结构使用新的 ID，保留表名与约束。</span><button class="primary" @onclick="RestoreProject" disabled="@(importReading || importPreview == null || importPreview.Errors.Count > 0 || string.IsNullOrWhiteSpace(importName))">创建项目并导入</button></div>
+}
+@if (modal == "validation" && table != null)
+{
+    <div class="validation-summary @(designIssues.Count > 0 ? "has-issues" : "")" role="status">
+        <Icon Name="@(designIssues.Count == 0 ? "check-circle" : "shield-check")" />
+        <div>
+            <h3>@(designIssues.Count == 0 ? "结构检查通过" : $"发现 {designIssues.Count} 项需要处理的问题")</h3>
+            <p>@table.Schema.@table.Name · @table.Columns.Count 个字段<br />检查字段、索引、外键、CHECK，以及其他表对当前表的引用。</p>
+        </div>
+    </div>
+    @if (designIssues.Count > 0)
+    {
+        <ol class="validation-list">@foreach (var issue in designIssues) { <li>@issue</li> }</ol>
+    }
+    <p class="validation-limit">检查当前编辑内容，不会保存或执行 SQL。表达式语义、级联路径等仍需在目标数据库验证。</p>
+    <div class="modal-footer"><span class="muted">修改后可再次检查，保存时也会自动校验。</span><button class="primary" @onclick='() => modal = ""'>返回编辑</button></div>
+}
+@if (modal == "table" && table != null)
+{
+    <fieldset><div class="form-grid"><label>显示名称<input @bind="table.Label" @bind:after="MarkDirty" @bind:event="oninput" /></label><label>表名<input class="mono" @bind="table.Name" @bind:after="MarkDirty" @bind:event="oninput" /></label><label>架构<input @bind="table.Schema" @bind:after="MarkDirty" @bind:event="oninput" /></label><label>模块<StudioSelect Label="模块" @bind-Value="table.Module" @bind-Value:after="MarkDirty" Items="ModuleOptions" AllowCustom="true" SearchPlaceholder="选择模块或输入新模块…" /></label><label class="wide">备注<textarea @bind="table.Comment" @bind:after="MarkDirty" @bind:event="oninput" rows="3"></textarea></label></div></fieldset>
+    <fieldset disabled="@(!CanDesign)"><div class="form-grid"><label>主键约束名称<input @bind="table.PrimaryKeyName" @bind:after="MarkDirty" @bind:event="oninput" placeholder="留空自动生成 PK_表名" /></label><label>主键降序字段<input @bind="table.PrimaryKeyDescendingColumns" @bind:after="MarkDirty" @bind:event="oninput" placeholder="英文逗号分隔，可选" /></label></div><label class="inline-check"><input type="checkbox" checked="@(table.PrimaryKeyClustered ?? !table.Indexes.Any(i => i.Clustered))" @onchange="e => { table.PrimaryKeyClustered = (bool)e.Value!; MarkDirty(); }" /> 主键使用聚集索引</label></fieldset>
+    <div class="modal-footer">
+        @if (project!.Tables.Any(item => item.Id == table.Id))
+        {
+            <button class="danger text-button" @onclick="DeleteFromModal"><Icon Name="trash3" /> 删除设计表</button>
+        }
+        else
+        {
+            <span class="muted">新表草稿 · 保存后加入项目</span>
+        }
+        <button class="primary" @onclick='() => modal = ""'>完成编辑</button>
+    </div>
+}
+@if (modal == "column" && advanced != null)
+{
+    <p class="muted mono">@advanced.Name · @advanced.Label</p>
+    <fieldset>
+        @if (advanced.Type is "datetime2" or "datetimeoffset" or "time") { <div class="drawer-section"><label>小数秒精度（0～7，留空使用默认）<input type="number" min="0" max="7" @bind="advanced.TemporalScale" @bind:after="MarkDirty" @bind:event="oninput" /></label></div> }
+        @if (advanced.Type == "float") { <div class="drawer-section"><label>float 精度（1～53，留空使用默认）<input type="number" min="1" max="53" @bind="advanced.FloatPrecision" @bind:after="MarkDirty" @bind:event="oninput" /></label></div> }
+        <div class="drawer-section"><h3>主键与自增</h3><label>复合主键顺序（0 表示非主键）<input type="number" min="0" @bind="advanced.PrimaryKeyOrder" @bind:after="MarkDirty" @bind:event="oninput" /></label><label class="inline-check"><input type="checkbox" @bind="advanced.Identity" @bind:after="MarkDirty" /> 自增 IDENTITY</label><div class="form-grid"><label>起始值<input type="number" @bind="advanced.IdentitySeed" @bind:after="MarkDirty" @bind:event="oninput" /></label><label>步长<input type="number" @bind="advanced.IdentityIncrement" @bind:after="MarkDirty" @bind:event="oninput" /></label></div></div>
+        <div class="drawer-section"><h3>计算列</h3><label>计算表达式<textarea rows="3" class="mono" @bind="advanced.Computed" @bind:after="MarkDirty" @bind:event="oninput" placeholder="[Quantity] * [UnitPrice]"></textarea></label><label class="inline-check"><input type="checkbox" @bind="advanced.Persisted" @bind:after="MarkDirty" /> 持久化 PERSISTED</label></div>
+        <div class="drawer-section"><h3>默认值与排序规则</h3><label>默认值 SQL 表达式<input class="mono" @bind="advanced.Default" @bind:after="MarkDirty" @bind:event="oninput" placeholder="例如 0、N'启用'、GETDATE()" /></label><label>字符排序规则<input class="mono" @bind="advanced.Collation" @bind:after="MarkDirty" @bind:event="oninput" placeholder="留空使用数据库默认值" /></label></div>
+    </fieldset><div class="modal-footer"><span class="muted">完成后，点击「保存设计」统一保存。</span><button class="primary" @onclick='() => modal = ""'>完成编辑</button></div>
+}
+@if (modal == "project")
+{
+    <label>项目名称<input @bind="projectName" @bind:event="oninput" placeholder="例如：新工厂 ERP" /></label><label>项目说明<textarea rows="3" @bind="projectDescription" @bind:event="oninput"></textarea></label><label>数据库方言<input value="SQL Server" disabled /></label><div class="modal-footer"><span class="muted">每个项目独立维护数据表。</span><button class="primary" @onclick="CreateProject">创建项目</button></div>
+}
+@if (modal == "paste")
+{
+    <p class="muted">从 Excel 复制以下顺序的列（不含表头）：字段名、定义名、类型、长度、非空（Y）、备注。前三列必填。</p><textarea class="paste-area mono" rows="10" @bind="paste" @bind:event="oninput" placeholder="将 Excel 单元格粘贴到这里…"></textarea><div class="modal-footer"><span class="muted">追加到当前表末尾，不覆盖已有字段。</span><button class="primary" @onclick="PasteRows">添加到表</button></div>
+}
+@if (modal == "user")
+{
+    <div class="form-grid"><label>账号<input @bind="editLogin" @bind:event="oninput" autocomplete="off" /></label><label>显示名称<input @bind="editName" @bind:event="oninput" /></label><label>角色<StudioSelect Label="角色" @bind-Value="editRole" Items="RoleOptions" /></label><label>密码<input type="password" @bind="editPassword" @bind:event="oninput" autocomplete="new-password" placeholder="已有用户留空则不修改" /></label></div><label class="inline-check"><input type="checkbox" @bind="editEnabled" /> 启用账号</label><p class="muted">新密码至少 10 位，包含字母和数字。保存已有成员将使其旧会话失效。</p><div class="modal-footer"><span></span><button class="primary" @onclick="SaveUser">保存成员</button></div>
+}
+@if (modal == "role")
+{
+    <label>角色名称<input @bind="editRoleName" @bind:event="oninput" /></label><div class="permission-list">@foreach (var p in PermissionList) { <label><input type="checkbox" checked="@((editPermissions & p) != 0)" disabled="@(p == Permission.Read)" @onchange="e => SetPermission(p, (bool)e.Value!)" /><span>@PermissionName(p)</span></label> }</div><div class="modal-footer"><span class="muted">所有角色均保留查看权限。</span><button class="primary" @onclick="SaveRole">保存权限</button></div>
+}
+@if (modal == "password")
+{
+    <label>当前密码<input type="password" @bind="oldPassword" @bind:event="oninput" autocomplete="current-password" /></label><label>新密码<input type="password" @bind="newPassword" @bind:event="oninput" autocomplete="new-password" /></label><p class="muted">至少 10 位，包含字母和数字。修改后需要重新登录。</p><div class="modal-footer"><span></span><button class="primary" @onclick="ChangePassword">修改密码</button></div>
+}
+</section></div>
+}
+}
+
+
+
+
+
+@if (confirmation != null)
+{
+<div class="modal-backdrop confirmation-backdrop"><section class="modal confirm-modal" role="alertdialog" aria-modal="true" aria-label="确认操作"><h2>确认操作</h2><p>@confirmationText</p><div class="modal-footer"><button @onclick="() => ResolveConfirm(false)">取消</button><button class="primary" @onclick="() => ResolveConfirm(true)">确定</button></div></section></div>
+}

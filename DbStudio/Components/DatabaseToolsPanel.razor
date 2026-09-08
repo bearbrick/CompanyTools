@@ -1,0 +1,141 @@
+@implements IDisposable
+@inject StudioStore Store
+@inject SqlServerTools Tools
+@inject IJSRuntime JS
+
+<section class="database-tools">
+    <div class="tools-heading"><div><p class="muted">@Project.Name / SQL Server</p><h1>数据库工具</h1><p>连接实际数据库，反推设计或比对并同步已保存的结构。</p></div><span class="subtle-tag">项目独立连接</span></div>
+    @if (problem != "") { <pre class="settings-error" role="alert">@problem</pre> }
+    @if (notice != "") { <p class="settings-notice" role="status">@notice</p> }
+    @if (busy) { <div class="tools-progress" role="status">@progress <button @onclick="Cancel">取消操作</button></div> }
+    <fieldset disabled="@busy">
+        <div class="connection-bar"><label>当前连接<StudioSelect Label="当前数据库连接" Value="@connectionId" ValueChanged="SelectConnection" Items="ConnectionOptions" Placeholder="先添加数据库连接" /></label><button disabled="@(connectionId == "")" @onclick="Test">测试连接</button><button @onclick="RefreshConnections">刷新连接</button>@if (manage) { <button @onclick="NewConnection">新增连接</button><button disabled="@(connectionId == "")" @onclick="EditConnection">编辑连接</button><button class="text-button danger" disabled="@(connectionId == "")" @onclick="RequestDeleteConnection">删除连接</button> }</div>
+        @if (deleting != null)
+        {
+            <section class="connection-form" role="alertdialog" aria-label="删除连接确认">
+                <h2>删除连接「@deleting.Name」？</h2>
+                <p>@deleting.Server / @deleting.Database</p>
+                <p class="muted">仅移除本项目保存的连接配置和凭证，实际数据库及数据保持不变。使用此连接的旧同步计划将无法执行。</p>
+                <div class="modal-footer"><button @onclick="() => deleting = null">取消删除</button><button class="primary" @onclick="DeleteConnection">确认删除连接配置</button></div>
+            </section>
+        }
+        @if (edit != null)
+        {
+            <section class="connection-form"><h2>@(edit.Revision == 0 ? "新增连接" : "编辑连接")</h2><div class="form-grid">
+                <label>连接名称<input @bind="edit.Name" @bind:event="oninput" /></label><label>服务器 / 实例<input @bind="edit.Server" @bind:event="oninput" placeholder="例如：192.168.1.10 或 SERVER\INSTANCE" /></label>
+                <label>数据库名称<input @bind="edit.Database" @bind:event="oninput" /></label><label>认证方式<StudioSelect Label="数据库认证方式" @bind-Value="authentication" Items="AuthenticationOptions" /></label>
+                @if (authentication == "sql") { <label>SQL 登录账号<input autocomplete="off" @bind="edit.UserName" @bind:event="oninput" /></label><label>密码<input type="password" autocomplete="new-password" @bind="password" @bind:event="oninput" placeholder="编辑时留空保留原密码" /></label> }
+            </div><label class="check-label"><input type="checkbox" @bind="edit.TrustServerCertificate" /> 信任服务器证书（自签名证书的内网环境）</label><p class="muted">连接由应用服务器发起。Windows 认证使用应用运行账号；SQL 密码加密保存，不进入项目备份或分享。</p><div class="modal-footer"><button @onclick="() => edit = null">取消</button><button class="primary" @onclick="SaveConnection">保存连接</button></div></section>
+        }
+        <div class="tools-actions">
+            <article><span class="eyebrow">DATABASE → DESIGN</span><h2>从数据库反推设计</h2><p>读取表、字段、索引、外键和检查约束。预览后合并到当前项目。</p><button disabled="@(connectionId == "")" @onclick="Reverse">读取结构并预览</button></article>
+            <article><span class="eyebrow">DESIGN → DATABASE</span><h2>结构比对与同步</h2><p>按已保存设计生成差异和 SQL 脚本，核对后再执行。</p><label class="check-label"><input type="checkbox" @bind="prune" @bind:after="InvalidatePlan" /> 删除数据库中设计未定义的表、列和约束</label><label class="check-label"><input type="checkbox" @bind="allowDataLoss" @bind:after="InvalidatePlan" /> 允许可能丢失数据的变更</label><button class="primary" disabled="@(connectionId == "")" @onclick="Compare">开始比对</button></article>
+        </div>
+        @if (snapshot != null)
+        {
+            <section class="tools-result"><div class="section-title"><div><h2>反推预览</h2><p class="muted">@snapshot.Project.Tables.Count 张表 · @snapshot.Project.Tables.Sum(t => t.Columns.Count) 个字段 · @snapshot.Project.Tables.Sum(t => t.ForeignKeys.Count) 条外键</p></div><button class="primary" disabled="@(snapshot.Warnings.Count > 0 || !design)" @onclick="ApplySnapshot">确认合并到设计</button></div>
+                <p class="muted">同名表更新结构并保留已有模块、名称与业务备注；新增表加入项目。仅在设计中存在的表会保留。此操作不修改实际数据库。</p>
+                @if (snapshot.Warnings.Count > 0) { <div class="settings-error"><b>以下特性尚不能无损合并：</b><ul>@foreach (var warning in snapshot.Warnings) { <li>@warning</li> }</ul></div> }
+                <div class="tools-table-scroll"><table class="list-table"><thead><tr><th>表</th><th>说明</th><th>字段</th><th>索引</th><th>外键</th><th>处理</th></tr></thead><tbody>@foreach (var t in snapshot.Project.Tables) { <tr><td class="mono">@t.Schema.@t.Name</td><td>@t.Label</td><td>@t.Columns.Count</td><td>@t.Indexes.Count</td><td>@t.ForeignKeys.Count</td><td>@(Project.Tables.Any(p => p.Name.Equals(t.Name, StringComparison.OrdinalIgnoreCase) && p.Schema.Equals(t.Schema, StringComparison.OrdinalIgnoreCase)) ? "更新结构" : "新增表")</td></tr> }</tbody></table></div>
+            </section>
+        }
+        @if (plan != null)
+        {
+            <section class="tools-result"><div class="section-title"><div><h2>结构差异 <span>@plan.Changes.Count</span></h2><p class="muted">目标 @Selected?.Server / @plan.Database · 设计 r@(plan.ProjectRevision) · 计划有效至 @plan.ExpiresAt.ToLocalTime().ToString("HH:mm")</p></div><button @onclick="DownloadPlan">下载同步 SQL</button></div>
+                @if (plan.Changes.Count == 0) { <p class="settings-notice">当前比对选项下，设计与数据库结构一致。</p> }
+                @if (plan.Warnings.Count > 0) { <div class="settings-error"><ul>@foreach (var warning in plan.Warnings) { <li>@warning</li> }</ul></div> }
+                <div class="tools-table-scroll"><table class="list-table"><thead><tr><th>操作</th><th>对象类型</th><th>对象</th></tr></thead><tbody>@foreach (var change in plan.Changes) { <tr><td>@OperationName(change.Operation)</td><td>@change.ObjectType</td><td class="mono">@change.Name</td></tr> }</tbody></table></div>
+                <details class="plan-script"><summary>查看完整同步脚本</summary><pre>@plan.Script</pre></details>
+                @if (plan.Changes.Count > 0)
+                {
+                    <div class="execute-panel"><h3>执行到实际数据库</h3><p>执行会修改 <b>@Selected?.Server / @plan.Database</b>。请核对脚本并做好备份。@(plan.Prune ? "本计划包含删除多余对象。" : "") @(plan.AllowDataLoss ? "本计划允许数据丢失。" : "")</p><label class="check-label"><input type="checkbox" @bind="reviewed" /> 我已核对目标和同步脚本</label><label>输入目标数据库名称确认<input @bind="confirmedDatabase" @bind:event="oninput" placeholder="@plan.Database" /></label><button class="primary" disabled="@(!reviewed || confirmedDatabase != plan.Database)" @onclick="Execute">执行同步</button></div>
+                }
+            </section>
+        }
+    </fieldset>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public DesignProject Project { get; set; } = default!;
+    [Parameter, EditorRequired] public System.Security.Claims.ClaimsPrincipal Principal { get; set; } = default!;
+    [Parameter] public EventCallback<DesignProject> Saved { get; set; }
+    [Parameter] public EventCallback<bool> BusyChanged { get; set; }
+    private List<DatabaseConnection> connections = [];
+    private string connectionId = "", password = "", authentication = "windows", problem = "", notice = "", progress = "", confirmedDatabase = "";
+    private bool busy, manage, design, prune, allowDataLoss, reviewed;
+    private DatabaseConnection? edit;
+    private DatabaseConnection? deleting;
+    private DatabaseSnapshot? snapshot;
+    private int snapshotRevision;
+    private DatabasePlan? plan;
+    private CancellationTokenSource? operation;
+    private DatabaseConnection? Selected => connections.FirstOrDefault(c => c.Id == connectionId);
+    private List<SelectOption> ConnectionOptions => connections.Select(c => new SelectOption(c.Id, c.Name, c.Server + " / " + c.Database)).ToList();
+    private static readonly List<SelectOption> AuthenticationOptions = [new("windows", "Windows 集成认证"), new("sql", "SQL Server 账号密码")];
+
+    protected override void OnInitialized()
+    {
+        Handle(() => { connections = Store.Connections(Principal, Project.Id); connectionId = connections.FirstOrDefault()?.Id ?? ""; var access = Store.AccessTo(Principal, Project.Id); manage = access.HasFlag(ProjectAccess.Manage); design = access.HasFlag(ProjectAccess.Design); });
+    }
+    private void SelectConnection(string value) { connectionId = value; snapshot = null; edit = deleting = null; password = ""; InvalidatePlan(); notice = problem = ""; }
+    private void InvalidatePlan() { plan = null; reviewed = false; confirmedDatabase = ""; }
+    private void NewConnection() { deleting = null; edit = new() { ProjectId = Project.Id }; password = ""; authentication = "windows"; }
+    private void EditConnection() { deleting = null; edit = ModelJson.Clone(Selected); password = ""; authentication = edit?.IntegratedSecurity == true ? "windows" : "sql"; }
+    /// <summary>刷新会清理依赖旧连接的预览和草稿，保留仍存在的选中项。</summary>
+    private void RefreshConnections() => Handle(() =>
+    {
+        connections = Store.Connections(Principal, Project.Id);
+        SelectConnection(connections.FirstOrDefault(c => c.Id == connectionId)?.Id ?? connections.FirstOrDefault()?.Id ?? "");
+        notice = "连接列表已刷新。";
+    });
+    /// <summary>复制确认对象及版本，避免随后切换连接改变删除目标。</summary>
+    private void RequestDeleteConnection() { deleting = ModelJson.Clone(Selected); edit = null; password = ""; }
+    /// <summary>确认后只删除配置，成功时清除该连接的结构预览和同步计划。</summary>
+    private void DeleteConnection() => Handle(() =>
+    {
+        if (deleting == null) { return; }
+        Store.DeleteConnection(Principal, Project.Id, deleting.Id, deleting.Revision);
+        connections = Store.Connections(Principal, Project.Id);
+        SelectConnection(connections.FirstOrDefault()?.Id ?? "");
+        notice = "连接配置已删除，实际数据库未改变。";
+    });
+    private void SaveConnection() => Handle(() => { edit!.IntegratedSecurity = authentication == "windows"; var saved = Store.SaveConnection(Principal, edit, password); connections = Store.Connections(Principal, Project.Id); SelectConnection(saved.Id); password = ""; notice = "连接配置已保存，可以测试连接。"; });
+    private Task Test() => Perform("正在测试连接…", async token => notice = "连接成功：" + await Tools.TestAsync(Principal, Project.Id, connectionId, token));
+    private Task Reverse() => Perform("正在读取数据库结构…", async token => { snapshot = null; InvalidatePlan(); snapshotRevision = Project.Revision; snapshot = await Tools.ReverseAsync(Principal, Project.Id, connectionId, token); });
+    private Task Compare() => Perform("正在比对结构并生成脚本…", async token => { snapshot = null; InvalidatePlan(); plan = await Tools.CompareAsync(Principal, Project.Id, connectionId, prune, allowDataLoss, token); });
+    private async Task ApplySnapshot()
+    {
+        DesignProject? updated = null;
+        Handle(() => updated = Store.ApplyDatabaseSnapshot(Principal, Project.Id, snapshotRevision, snapshot!));
+        if (updated != null) { await Saved.InvokeAsync(updated); snapshot = null; InvalidatePlan(); notice = "数据库结构已合并到项目设计。"; }
+    }
+    private Task Execute() => Perform("正在同步结构，请等待数据库返回结果…", async token =>
+    {
+        var current = plan!;
+        try { await Tools.ExecuteAsync(Principal, Project.Id, current.Id, confirmedDatabase, token); notice = "结构同步成功。再次比对可确认最新状态。"; }
+        finally { InvalidatePlan(); }
+    });
+    private Task DownloadPlan() => JS.InvokeVoidAsync("studio.download", $"{plan!.Database}-sync.sql", plan.Script, "text/plain;charset=utf-8").AsTask();
+    private static string OperationName(string value) => value switch { "Create" => "新增", "Alter" => "修改", "Drop" => "删除", _ => value };
+
+    /// <summary>耗时操作可取消并锁定当前工具上下文，避免切换项目后误用旧计划。</summary>
+    private async Task Perform(string text, Func<CancellationToken, Task> action)
+    {
+        if (busy) { return; }
+        busy = true; progress = text; problem = notice = ""; operation = new();
+        await BusyChanged.InvokeAsync(true);
+        try { await action(operation.Token); }
+        catch (OperationCanceledException) { problem = "操作已取消；如果已进入执行阶段，请重新比对确认数据库状态。"; }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException or Microsoft.Data.SqlClient.SqlException or Microsoft.SqlServer.Dac.DacServicesException or Microsoft.SqlServer.Dac.Model.DacModelException)
+        { problem = ex.Message; }
+        finally { busy = false; operation.Dispose(); operation = null; await BusyChanged.InvokeAsync(false); }
+    }
+    private void Handle(Action action)
+    {
+        problem = notice = "";
+        try { action(); }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { problem = ex.Message; }
+    }
+    private void Cancel() => operation?.Cancel();
+    public void Dispose() => operation?.Cancel();
+}

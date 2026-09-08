@@ -1,0 +1,143 @@
+@inject StudioStore Store
+@inject NavigationManager Navigation
+@inject IConfiguration Configuration
+@inject IJSRuntime JS
+
+<div class="settings-tabs" role="tablist" aria-label="项目设置">
+    <button class="@(section == "info" ? "active" : "")" @onclick='() => section = "info"'>基本信息</button>
+    <button class="@(section == "modules" ? "active" : "")" @onclick='() => section = "modules"'>模块管理</button>
+    @if (manage)
+    {
+        <button class="@(section == "members" ? "active" : "")" @onclick='() => section = "members"'>项目成员</button>
+        <button class="@(section == "shares" ? "active" : "")" @onclick='() => section = "shares"'>只读分享</button>
+    }
+</div>
+@if (problem != "") { <p class="settings-error" role="alert">@problem</p> }
+@if (notice != "") { <p class="settings-notice" role="status">@notice</p> }
+@if (section == "info")
+{
+    <p class="muted">项目独立保存结构、成员和分享。系统管理员可管理全部项目。</p>
+    <fieldset disabled="@(!manage)">
+        <label>项目名称<input maxlength="100" @bind="name" @bind:event="oninput" /></label>
+        <label>项目说明<textarea maxlength="2000" rows="3" @bind="description" @bind:event="oninput"></textarea></label>
+    </fieldset>
+    <div class="settings-facts"><span>SQL Server</span><span>版本 r@(Project.Revision)</span><span>@Project.Tables.Count 张表</span></div>
+    @if (manage) { <div class="modal-footer"><span class="muted">修改名称不会改变项目 ID 或表结构。</span><button class="primary" @onclick="SaveInfo">保存项目信息</button></div> }
+}
+@if (section == "modules")
+{
+    <p class="muted">可以先创建空模块。重命名会同时更新模块内的全部表。</p>
+    <div class="settings-list">
+    @foreach (var module in Project.Modules.Concat(Project.Tables.Select(t => t.Module)).Distinct())
+    {
+        <div><span><b>@module</b><small>@Project.Tables.Count(t => t.Module == module) 张表</small></span><button class="text-button" disabled="@(!design)" @onclick="() => { oldModule = module; moduleName = module; }">重命名</button></div>
+    }
+    </div>
+    @if (design)
+    {
+        <label>@(oldModule == null ? "新模块名称" : "修改模块名称")<input @bind="moduleName" @bind:event="oninput" maxlength="100" placeholder="例如：采购管理" /></label>
+        <div class="modal-footer"><button class="text-button" @onclick='() => { oldModule = null; moduleName = ""; }'>清空</button><button class="primary" @onclick="SaveModule">@(oldModule == null ? "创建模块" : "保存模块名称")</button></div>
+    }
+}
+@if (section == "members" && manage)
+{
+    <p class="muted">只有添加到本项目的成员才能访问。项目权限与账号角色共同生效；修改权限对后续操作立即生效。</p>
+    <div class="settings-list">
+    @foreach (var member in members)
+    {
+        <div><span><b>@member.DisplayName</b><small>@member.Login · @AccessLabel(member.Access)</small></span><span><button class="text-button" @onclick="() => { memberLogin = member.Login; memberAccess = ((int)member.Access).ToString(); }">调整</button><button class="text-button danger" @onclick="() => RemoveMember(member)">移除</button></span></div>
+    }
+    </div>
+    <div class="form-grid"><label>登录账号<input @bind="memberLogin" @bind:event="oninput" placeholder="填写已有账号" /></label><label>项目权限<StudioSelect Label="项目权限" @bind-Value="memberAccess" Items="AccessOptions" /></label></div>
+    <div class="modal-footer"><span class="muted">新账号由「权限管理」创建。</span><button class="primary" @onclick="SaveMember">保存成员权限</button></div>
+}
+@if (section == "shares" && manage)
+{
+    <p class="muted">持有链接的人无需登录即可查看本项目最新保存的结构，可切换表格和卡片。分享页不提供编辑功能。</p>
+    <div class="form-grid"><label>分享名称<input @bind="shareName" @bind:event="oninput" maxlength="100" placeholder="例如：供应商结构评审" /></label><label>有效期<StudioSelect Label="分享有效期" @bind-Value="shareDays" Items="ExpiryOptions" /></label></div>
+    <button class="primary" disabled="@(!export)" @onclick="CreateShare">创建只读链接</button>
+    @if (shareUrl != "")
+    {
+        <div class="share-result"><label>分享网址（仅在创建时显示，请复制保存）<input readonly value="@shareUrl" /></label><button class="primary" @onclick="CopyShare">复制网址</button><a href="@shareUrl" target="_blank" rel="noreferrer">打开预览 ↗</a></div>
+    }
+    @if (LocalOnly) { <p class="muted">当前网址为本机地址。对外访问需要将应用部署到可访问的服务器，并设置 Studio:PublicBaseUrl 为该域名。</p> }
+    <div class="settings-list">
+    @foreach (var share in shares)
+    {
+        <div><span><b>@share.Name</b><small>@(share.Revoked ? "已撤销" : share.ExpiresAt == "" ? "长期有效" : "到期 " + DateTimeOffset.Parse(share.ExpiresAt).ToLocalTime().ToString("yyyy-MM-dd HH:mm"))</small></span><button class="text-button danger" disabled="@share.Revoked" @onclick="() => RevokeShare(share)">撤销</button></div>
+    }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public DesignProject Project { get; set; } = default!;
+    [Parameter, EditorRequired] public System.Security.Claims.ClaimsPrincipal Principal { get; set; } = default!;
+    [Parameter] public EventCallback<DesignProject> Saved { get; set; }
+    [Parameter] public string InitialSection { get; set; } = "info";
+    private string section = "info", name = "", description = "", problem = "", notice = "";
+    private string memberLogin = "", memberAccess = "1", moduleName = "", shareName = "结构评审", shareDays = "30", shareUrl = "";
+    private string? oldModule;
+    private bool manage, design, export;
+    private List<ProjectMember> members = [];
+    private List<ProjectShare> shares = [];
+    private static readonly List<SelectOption> AccessOptions = [new("1", "只读成员", "查看本项目的设计"), new("7", "设计成员", "查看、维护、导出结构"), new("23", "数据库维护成员", "设计成员权限，加上数据库工具"), new("31", "项目管理员", "管理本项目的全部功能")];
+    private static readonly List<SelectOption> ExpiryOptions = [new("7", "7 天"), new("30", "30 天"), new("90", "90 天"), new("0", "长期有效")];
+    private string PublicBase => (Configuration["Studio:PublicBaseUrl"] ?? Navigation.BaseUri).TrimEnd('/');
+    private bool LocalOnly => Uri.TryCreate(PublicBase, UriKind.Absolute, out var uri) && uri.IsLoopback;
+
+    /// <summary>打开时读取服务端当前授权；提交操作由服务再次授权。</summary>
+    protected override void OnInitialized()
+    {
+        section = InitialSection;
+        name = Project.Name;
+        description = Project.Description;
+        Handle(() =>
+        {
+            var access = Store.AccessTo(Principal, Project.Id);
+            var actor = Store.Require(Principal, Permission.Read);
+            manage = access.HasFlag(ProjectAccess.Manage);
+            design = access.HasFlag(ProjectAccess.Design) && actor.Permissions.HasFlag(Permission.Design);
+            export = access.HasFlag(ProjectAccess.Export) && actor.Permissions.HasFlag(Permission.Export);
+            ReloadLists();
+        });
+    }
+
+    private void ReloadLists()
+    {
+        if (manage)
+        {
+            members = Store.ProjectMembers(Principal, Project.Id);
+            shares = Store.Shares(Principal, Project.Id);
+        }
+    }
+
+    /// <summary>项目服务返回权威新版本后交回工作台，避免旧版本继续保存。</summary>
+    private async Task SaveInfo()
+    {
+        DesignProject? updated = null;
+        Handle(() => updated = Store.UpdateProject(Principal, Project.Id, Project.Revision, name, description));
+        if (updated != null) { await Saved.InvokeAsync(updated); notice = "项目信息已保存"; }
+    }
+
+    private async Task SaveModule()
+    {
+        DesignProject? updated = null;
+        Handle(() => updated = Store.SaveModule(Principal, Project.Id, Project.Revision, oldModule, moduleName));
+        if (updated != null) { await Saved.InvokeAsync(updated); oldModule = null; moduleName = ""; notice = "模块已保存"; }
+    }
+
+    private void SaveMember() => Handle(() => { Store.SaveProjectMember(Principal, Project.Id, memberLogin, (ProjectAccess)int.Parse(memberAccess)); ReloadLists(); notice = "成员权限已保存"; });
+    private void RemoveMember(ProjectMember member) => Handle(() => { Store.SaveProjectMember(Principal, Project.Id, member.Login, ProjectAccess.None); ReloadLists(); notice = "已移除项目成员"; });
+    private void CreateShare() => Handle(() => { shareUrl = PublicBase + "/share/" + Store.CreateShare(Principal, Project.Id, shareName, int.Parse(shareDays)); ReloadLists(); });
+    private void RevokeShare(ProjectShare share) => Handle(() => { Store.RevokeShare(Principal, Project.Id, share.Id); shareUrl = ""; ReloadLists(); notice = "分享已撤销"; });
+    private async Task CopyShare() { await JS.InvokeVoidAsync("studio.copy", shareUrl); notice = "网址已复制"; }
+    private static string AccessLabel(ProjectAccess access) => AccessOptions.FirstOrDefault(x => x.Value == ((int)access).ToString())?.Text ?? access.ToString();
+
+    /// <summary>仅转换预期业务错误；不隐藏编程或基础设施异常。</summary>
+    private void Handle(Action action)
+    {
+        problem = notice = "";
+        try { action(); }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { problem = ex.Message; }
+    }
+}

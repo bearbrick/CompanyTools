@@ -1,0 +1,88 @@
+@implements IDisposable
+@inject IJSRuntime JS
+
+<span class="studio-select @Class" @ref="root">
+    <button type="button" class="select-trigger" aria-label="@Label" aria-haspopup="listbox"
+            aria-expanded="false" aria-controls="@(id + "-list")" disabled="@Disabled" @onclick="OpenAsync">
+        <span class="select-value @(string.IsNullOrEmpty(Value) ? "select-placeholder" : "")">@DisplayText</span>
+        <Icon Name="chevron-down" />
+    </button>
+    <span class="select-popup" id="@id" popover="auto" data-custom="@AllowCustom.ToString().ToLowerInvariant()">
+        <span class="select-search"><Icon Name="search" />
+            <input role="combobox" aria-label="@("搜索" + Label)" aria-controls="@(id + "-list")"
+                   aria-expanded="true" aria-autocomplete="list" placeholder="@SearchPlaceholder" autocomplete="off" />
+            <kbd>Esc</kbd>
+        </span>
+        <span class="select-options" id="@(id + "-list")" role="listbox" aria-label="@Label">
+            @foreach (var option in Items)
+            {
+                <span @key="option.Value" id="@(id + "-option-" + Items.IndexOf(option))" class="select-option"
+                      role="option" aria-selected="@((option.Value == Value).ToString().ToLowerInvariant())"
+                      data-value="@option.Value" data-search="@(option.Text + " " + option.Description + " " + option.Group)">
+                    <span class="select-option-copy"><span class="select-option-title">@option.Text</span>
+                        @if (!string.IsNullOrEmpty(option.Description)) { <small>@option.Description</small> }
+                    </span>
+                    @if (!string.IsNullOrEmpty(option.Group)) { <span class="select-category">@option.Group</span> }
+                    <span class="select-check" aria-hidden="true">✓</span>
+                </span>
+            }
+        </span>
+        <span class="select-empty" hidden>没有匹配项，换个关键词试试</span>
+        @if (AllowCustom) { <button type="button" class="select-custom" hidden>使用输入的内容</button> }
+        <span class="select-hint"><span class="select-count">@Items.Count 项</span><span>↑ ↓ 选择 · Enter 确定</span></span>
+    </span>
+</span>
+
+@code {
+    /// <summary>实际保存的值；显示名称由选项提供。</summary>
+    [Parameter] public string? Value { get; set; }
+
+    /// <summary>选中后通知父组件，由父组件决定是否接受并标记未保存状态。</summary>
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    /// <summary>带名称、说明与分类的候选项。</summary>
+    [Parameter] public List<SelectOption> Items { get; set; } = [];
+
+    /// <summary>提供给辅助技术及搜索框的控件名称。</summary>
+    [Parameter] public string Label { get; set; } = "选项";
+
+    /// <summary>未选择时的占位文字。</summary>
+    [Parameter] public string Placeholder { get; set; } = "请选择";
+
+    /// <summary>搜索输入提示；匹配名称、说明与分类。</summary>
+    [Parameter] public string SearchPlaceholder { get; set; } = "输入关键词搜索…";
+
+    /// <summary>场景外观类，例如项目选择器或表格单元格。</summary>
+    [Parameter] public string Class { get; set; } = "";
+
+    /// <summary>禁用交互；同时尊重外层 fieldset 的禁用状态。</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>模块等开放词汇允许直接使用输入内容；数据库类型不允许。</summary>
+    [Parameter] public bool AllowCustom { get; set; }
+
+    private readonly string id = "select-" + Guid.NewGuid().ToString("N");
+    private ElementReference root;
+    private DotNetObjectReference<StudioSelect>? reference;
+    private string DisplayText => Items.FirstOrDefault(item => item.Value == Value)?.Text
+        ?? (string.IsNullOrEmpty(Value) ? Placeholder : Value);
+
+    /// <summary>将浮层交给浏览器定位，搜索及键盘移动在本地完成以避免网络延迟。</summary>
+    private async Task OpenAsync()
+    {
+        if (Disabled) return;
+        reference ??= DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("studioSelect.open", root, reference);
+    }
+
+    /// <summary>再次验证候选值，再向父组件提交；JavaScript 不直接修改业务模型。</summary>
+    [JSInvokable]
+    public async Task SelectValue(string value)
+    {
+        if (Disabled || (!AllowCustom && !Items.Any(item => item.Value == value))) return;
+        await ValueChanged.InvokeAsync(value);
+    }
+
+    /// <summary>释放跨语言对象引用，避免切换数据表后保留旧组件。</summary>
+    public void Dispose() => reference?.Dispose();
+}

@@ -1,0 +1,93 @@
+@using Microsoft.AspNetCore.Components
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@Project.Name · 结构分享</title>
+    <link rel="stylesheet" href="/share.css" />
+</head>
+<body>
+    <header><a href="@Link()" class="brand">DB Studio <span>结构分享</span></a><span class="badge">只读 · SQL Server · r@(Project.Revision)</span></header>
+    <div class="share-layout">
+        <aside>
+            <h1>@Project.Name</h1><p class="muted">@Project.Description</p>
+            <form method="get"><input name="q" value="@Search" placeholder="搜索表名或字段" aria-label="搜索表名或字段" /><input type="hidden" name="view" value="@View" /><button>搜索</button></form>
+            <p class="muted">@Project.Tables.Count 张表 · @Project.Tables.Sum(t => t.Columns.Count) 个字段</p>
+            <nav>
+            @foreach (var group in VisibleTables.GroupBy(t => t.Module))
+            {
+                <h3>@group.Key <small>@group.Count()</small></h3>
+                @foreach (var item in group)
+                {
+                    <a class="@(Current?.Id == item.Id ? "active" : "")" href="@Link(item.Id)"><b>@Label(item)</b><small>@item.Schema.@item.Name</small></a>
+                }
+            }
+            </nav>
+        </aside>
+        <main>
+        @if (Current is { } table)
+        {
+            <div class="table-title"><div><p class="muted">@table.Module</p><h2>@Label(table)</h2><code>@table.Schema.@table.Name</code></div><div class="view-switch"><a class="@(View == "table" ? "active" : "")" href="@Link(table.Id, "table")">表格</a><a class="@(View == "cards" ? "active" : "")" href="@Link(table.Id, "cards")">卡片</a></div></div>
+            @if (table.Comment != "") { <p class="comment">@table.Comment</p> }
+            <h3>字段定义 <small>@table.Columns.Count</small></h3>
+            @if (View == "cards")
+            {
+                <div class="field-cards">
+                @foreach (var c in table.Columns)
+                {
+                    <article><div><strong>@c.Name</strong><span class="badge">@(c.PrimaryKeyOrder > 0 ? "PK " + c.PrimaryKeyOrder : c.Nullable ? "可空" : "必填")</span></div><p>@c.Label</p><code>@SqlServerDdl.DataType(c)</code><p class="muted">@c.Comment</p>@if (c.Default != "") { <p>默认值 <code>@c.Default</code></p> }@if (c.Computed != "") { <p>计算列 <code>@c.Computed</code> @(c.Persisted ? "[持久化]" : "")</p> }@if (c.Identity) { <p>自增 @c.IdentitySeed / @c.IdentityIncrement</p> }@if (c.Collation != "") { <p>排序规则 <code>@c.Collation</code></p> }</article>
+                }
+                </div>
+            }
+            else
+            {
+                <div class="table-scroll"><table><thead><tr><th>#</th><th>字段</th><th>说明</th><th>类型</th><th>主键</th><th>可空</th><th>默认值 / 计算表达式</th><th>自增</th><th>备注</th></tr></thead><tbody>
+                @foreach (var c in table.Columns)
+                {
+                    <tr><td>@(table.Columns.IndexOf(c) + 1)</td><td><code>@c.Name</code></td><td>@c.Label</td><td><code>@SqlServerDdl.DataType(c)</code>@if (c.Collation != "") { <small class="muted">排序规则：@c.Collation</small> }</td><td>@(c.PrimaryKeyOrder > 0 ? c.PrimaryKeyOrder : "—")</td><td>@(c.Nullable ? "是" : "否")</td><td><code>@(c.Computed == "" ? c.Default : c.Computed + (c.Persisted ? " [持久化]" : ""))</code></td><td>@(c.Identity ? $"{c.IdentitySeed} / {c.IdentityIncrement}" : "—")</td><td>@c.Comment</td></tr>
+                }
+                </tbody></table></div>
+            }
+            @if (table.Columns.Any(c => c.PrimaryKeyOrder > 0))
+            {
+                <h3>主键</h3>
+                <article><strong>@(table.PrimaryKeyName == "" ? "PK_" + table.Name : table.PrimaryKeyName)</strong><p><code>@OrderedKeys(string.Join(",", table.Columns.Where(c => c.PrimaryKeyOrder > 0).OrderBy(c => c.PrimaryKeyOrder).Select(c => c.Name)), table.PrimaryKeyDescendingColumns)</code> · @((table.PrimaryKeyClustered ?? !table.Indexes.Any(i => i.Clustered)) ? "聚集" : "非聚集")</p></article>
+            }
+            <h3>索引与唯一约束 <small>@table.Indexes.Count</small></h3>
+            @foreach (var index in table.Indexes)
+            {
+                <article><strong>@index.Name</strong><p><code>@OrderedKeys(index.Columns, index.DescendingColumns)</code> · @(index.Unique ? "唯一" : "普通") · @(index.Clustered ? "聚集" : "非聚集") @(index.IsConstraint ? " · 约束" : "")</p>@if (index.Include != "") { <p>包含列：@index.Include</p> }@if (index.Filter != "") { <code>@index.Filter</code> }</article>
+            }
+            <h3>外键关系 <small>@table.ForeignKeys.Count</small></h3>
+            @foreach (var fk in table.ForeignKeys)
+            {
+                var target = Project.Tables.FirstOrDefault(t => t.Id == fk.TargetTableId);
+                <article><strong>@fk.Name</strong><p><code>@fk.Columns</code> → <a href="@Link(fk.TargetTableId, clearSearch: true)">@target?.Schema.@target?.Name</a> (<code>@fk.TargetColumns</code>)</p><p class="muted">删除：@fk.OnDelete · 更新：@fk.OnUpdate</p></article>
+            }
+            <h3>检查约束 <small>@table.Checks.Count</small></h3>
+            @foreach (var check in table.Checks) { <article><strong>@check.Name</strong><p><code>@check.Expression</code></p></article> }
+        }
+        else { <h2>暂无匹配的数据表</h2><p class="muted">清空搜索条件，或等待项目成员保存设计。</p> }
+        <footer>展示项目最新已保存的结构 · 此页面仅供查看</footer>
+        </main>
+    </div>
+</body>
+</html>
+
+@code {
+    /// <summary>由匿名端点验证令牌后注入的单个项目文档。</summary>
+    [Parameter] public DesignProject Project { get; set; } = default!;
+    [Parameter] public string Token { get; set; } = "";
+    [Parameter] public string TableId { get; set; } = "";
+    [Parameter] public string Search { get; set; } = "";
+    [Parameter] public string View { get; set; } = "table";
+    private IEnumerable<TableDesign> VisibleTables => Project.Tables.Where(t => Search == "" || t.Name.Contains(Search, StringComparison.OrdinalIgnoreCase) || t.Label.Contains(Search, StringComparison.OrdinalIgnoreCase) || t.Columns.Any(c => c.Name.Contains(Search, StringComparison.OrdinalIgnoreCase) || c.Label.Contains(Search, StringComparison.OrdinalIgnoreCase)));
+    private TableDesign? Current => VisibleTables.FirstOrDefault(t => t.Id == TableId) ?? VisibleTables.FirstOrDefault();
+    private static string Label(TableDesign table) => table.Label == "" || table.Label == "#REF!" ? table.Name : table.Label;
+    /// <summary>显示有序键列及方向，保持与 SQL 定义一致。</summary>
+    private static string OrderedKeys(string columns, string descending) => string.Join(", ", SqlServerDdl.Names(columns).Select(name => SqlServerDdl.Q(name) + (SqlServerDdl.Names(descending).Contains(name, StringComparer.OrdinalIgnoreCase) ? " DESC" : " ASC")));
+
+    /// <summary>外键跳转清空搜索，避免目标表被原条件隐藏；切换视图仍保留搜索。</summary>
+    private string Link(string? id = null, string? view = null, bool clearSearch = false) => $"/share/{Token}?table={Uri.EscapeDataString(id ?? "")}&view={view ?? View}&q={Uri.EscapeDataString(clearSearch ? "" : Search)}";
+}

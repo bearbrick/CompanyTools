@@ -1,0 +1,48 @@
+# Build and publish output
+**/[Bb]in/
+**/[Oo]bj/
+/artifacts/
+**/TestResults/
+*.coverage
+*.coveragexml
+
+# Visual Studio, IDE state and existing SVN metadata
+**/.vs/
+**/.svn/
+**/.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Runtime data, credentials and local configuration
+**/App_Data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.bak
+*.mdf
+*.ndf
+*.ldf
+*.pfx
+*.p12
+*.key
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.*.Local.json
+*.pubxml.user
+**/Properties/PublishProfiles/
+
+# Logs, temporary files and OS metadata
+*.log
+*.tmp
+*.temp
+*.orig
+*.rej
+.DS_Store
+Thumbs.db
+Desktop.ini

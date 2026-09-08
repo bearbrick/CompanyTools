@@ -1,0 +1,44 @@
+/* 共享选择器：表格保持紧凑，弹层使用相同的信息层次和交互状态。 */
+.studio-select { display: inline-block; min-width: 0; width: 100%; }
+.select-trigger { width: 100%; justify-content: space-between; padding: 9px 11px; min-height: 39px; border-radius: 6px; font-weight: 400; }
+.select-value { overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.select-trigger > .icon { width: 11px; height: 11px; opacity: .5; transition: transform .15s; }
+.select-trigger[aria-expanded="true"] { border-color: #3475ea; box-shadow: 0 0 0 3px #3475ea12; }
+.select-trigger[aria-expanded="true"] > .icon { transform: rotate(180deg); opacity: 1; }
+.select-placeholder { color: #909caf; }
+.select-popup { position: fixed; inset: auto; margin: 0; padding: 0; background: #fff; color: #253147; border: 1px solid #dde5ef; border-radius: 10px; box-shadow: 0 12px 35px #142c4f26, 0 2px 7px #142c4f0d; overflow: hidden; font: 13px "Segoe UI", "Microsoft YaHei", sans-serif; text-align: left; white-space: normal; }
+.select-popup:popover-open { display: flex; flex-direction: column; }
+.select-search { display: flex; align-items: center; gap: 9px; margin: 10px; padding: 0 10px; min-height: 37px; border: 1px solid #dbe5f2; border-radius: 6px; background: #f7f9fd; flex-shrink: 0; }
+.select-search > .icon { width: 14px; opacity: .55; }
+.select-search input { flex: 1; width: 100%; min-width: 0; height: 34px; padding: 6px 0; border: 0; background: transparent; box-shadow: none; font: inherit; }
+.select-search input:focus { box-shadow: none; }
+.select-search kbd { font: 10px "Segoe UI", sans-serif; color: #95a1b4; border: 1px solid #dde4ee; border-radius: 3px; padding: 1px 4px; }
+.select-options { display: block; overflow: auto; overscroll-behavior: contain; min-height: 0; padding: 0 6px 6px; scrollbar-width: thin; scrollbar-color: #c9d5e5 transparent; }
+.select-option { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 5px; cursor: pointer; min-height: 42px; margin: 2px 0; border: 1px solid transparent; }
+.select-option-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.select-option-title { font-weight: 500; overflow-wrap: anywhere; }
+.select-option small { font-size: 11px; line-height: 1.5; color: #8090a6; overflow-wrap: anywhere; }
+.select-option[aria-selected="true"] { background: #edf4ff; color: #1555d4; }
+.select-option.is-highlighted { background: #f1f5fb; border-color: #dce6f5; }
+.select-option[aria-selected="true"].is-highlighted { background: #e9f2ff; border-color: #c6dafa; }
+.select-check { width: 13px; color: #1555d4; font-weight: 700; visibility: hidden; flex-shrink: 0; }
+.select-option[aria-selected="true"] .select-check { visibility: visible; }
+.select-category { font-size: 10px; color: #8796ad; background: #f3f6fa; padding: 2px 5px; border-radius: 3px; flex-shrink: 0; }
+.select-hint { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; border-top: 1px solid #edf0f5; color: #8b98aa; font-size: 10px; flex-shrink: 0; }
+.select-empty { text-align: center; color: #8b98aa; padding: 24px 14px; }
+.select-custom { margin: 0 10px 10px; color: #1555d4; overflow: hidden; text-overflow: ellipsis; }
+.select-popup [hidden] { display: none !important; }
+.project-picker { max-width: 245px; width: auto; min-width: 165px; }
+.project-picker .select-trigger { background: #ffffff0b; border-color: #ffffff24; color: #edf4ff; gap: 20px; }
+.project-picker .select-trigger:hover { background: #ffffff17; border-color: #ffffff40; }
+.project-picker .select-trigger > .icon { filter: brightness(0) invert(1); opacity: .8; }
+.field-grid .studio-select { height: 100%; display: block; }
+.field-grid .select-trigger { height: 36px; min-height: 36px; border: 1px solid transparent; border-radius: 0; background: transparent; padding: 7px 9px; font-family: Consolas, "Cascadia Code", monospace; font-size: 13px; }
+.field-grid .select-trigger:hover { background: #edf4ff; }
+.field-grid .select-trigger:focus-visible, .field-grid .select-trigger[aria-expanded="true"] { outline: none; border-color: #3475ea; background: #f0f6ff; box-shadow: inset 0 0 0 1px #3475ea12; }
+.field-grid .select-trigger > .icon { width: 9px; opacity: .35; }
+.type-picker .select-option-title { font-family: Consolas, "Cascadia Code", monospace; font-size: 13px; }
+@media (min-width: 1750px) { .field-grid .select-trigger { height: 41px; } }
+@media (max-width: 950px) { .project-picker { max-width: 180px; min-width: 130px; } }
+@media (max-width: 700px) { .project-picker { margin-left: auto; } }
+@media (prefers-reduced-motion: reduce) { .select-trigger > .icon { transition: none; } }

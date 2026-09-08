@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <ResourcePreloader />
+    <link rel="stylesheet" href="@Assets["app.css"]" />
+    <link rel="stylesheet" href="@Assets["DbStudio.styles.css"]" />
+    <link rel="stylesheet" href="@Assets["studio-select.css"]" />
+    <link rel="stylesheet" href="@Assets["workspace.css"]" />
+    <ImportMap />
+    <link rel="icon" type="image/svg+xml" href="icons/database.svg" />
+    <HeadOutlet @rendermode="InteractiveServer" />
+</head>
+
+<body>
+    <Routes @rendermode="InteractiveServer" />
+    <div id="components-reconnect-modal" class="reconnect-box"><section><h2>正在重新连接工作台</h2><p>连接暂时中断。恢复后可继续编辑；重新加载可能丢失未保存内容。</p><a href="/">重新加载页面</a></section></div>
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script src="@Assets["studio-select.js"]"></script>
+    <script src="@Assets["studio.js"]"></script>
+</body>
+
+</html>
