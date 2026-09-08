@@ -33,7 +33,7 @@ dotnet publish DbStudio/DbStudio.csproj -c Release -o artifacts/db-studio
 ## 文档
 
 - [功能与使用说明](DbStudio/README.md)
-- [部署说明](DbStudio/docs/deployment.md)
+- [IIS 部署与运维手册](DbStudio/docs/deployment.md)（环境安装、站点配置、数据迁移、备份升级与故障排查）
 - [开发说明](DbStudio/docs/development.md)
 
 已有环境部署时应单独迁移 `App_Data` 及其中的密钥；Git 仓库和发布输出不包含现有账号及项目数据库。

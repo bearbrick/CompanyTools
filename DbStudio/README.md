@@ -2,6 +2,8 @@
 
 .NET 10 + Blazor Interactive Server。设计、项目成员、审计和连接配置持久化到 SQLite，日常维护不依赖 Excel。
 
+部署到 Windows IIS 请按 [IIS 部署与运维手册](docs/deployment.md) 操作，包含完整配置示例、现有数据迁移和升级回滚流程。
+
 ## 启动与账号
 
 ```powershell
