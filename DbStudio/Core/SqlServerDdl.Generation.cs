@@ -47,6 +47,11 @@ public static partial class SqlServerDdl
             line += c.Nullable ? " NULL" : " NOT NULL";
             if (c.Default != "")
             {
+                // 名称和命名方式都是模型的一部分。不能把已有命名约束一律变成匿名 DEFAULT。
+                if (c.DefaultConstraintName != "" && !c.DefaultConstraintSystemNamed)
+                {
+                    line += $" CONSTRAINT {Q(c.DefaultConstraintName)}";
+                }
                 line += $" DEFAULT ({c.Default})";
             }
 
@@ -55,7 +60,8 @@ public static partial class SqlServerDdl
         var pk = table.Columns.Where(c => c.PrimaryKeyOrder > 0).OrderBy(c => c.PrimaryKeyOrder).ToList();
         if (pk.Count > 0)
         {
-            lines.Add($"    CONSTRAINT {Q(table.PrimaryKeyName == "" ? "PK_" + table.Name : table.PrimaryKeyName)} PRIMARY KEY {((table.PrimaryKeyClustered ?? !table.Indexes.Any(i => i.Clustered)) ? "CLUSTERED" : "NONCLUSTERED")} ({KeyList(string.Join(",", pk.Select(c => c.Name)), table.PrimaryKeyDescendingColumns)})");
+            var declaration = table.PrimaryKeySystemNamed ? "" : $"CONSTRAINT {Q(table.PrimaryKeyName == "" ? "PK_" + table.Name : table.PrimaryKeyName)} ";
+            lines.Add($"    {declaration}PRIMARY KEY {((table.PrimaryKeyClustered ?? !table.Indexes.Any(i => i.Clustered)) ? "CLUSTERED" : "NONCLUSTERED")} ({KeyList(string.Join(",", pk.Select(c => c.Name)), table.PrimaryKeyDescendingColumns)})");
         }
 
         foreach (var ix in table.Indexes.Where(i => i.IsConstraint))
@@ -91,10 +97,11 @@ public static partial class SqlServerDdl
             // 在生成处添加分隔符，避免按文本拆分时误切开备注中的换行或 GO。
             sb.AppendLine("GO");
         }
-        Description(string.Join(" · ", new[] { table.Label, table.Comment }.Where(s => s != "")));
+        // MS_Description 对应业务定义名。设计备注只保存在 Studio，不能拼接到实际库注释。
+        Description(table.Label);
         foreach (var c in table.Columns)
         {
-            Description(string.Join(" · ", new[] { c.Label, c.Comment }.Where(s => s != "")), c.Name);
+            Description(c.Label, c.Name);
         }
 
         return sb.ToString();

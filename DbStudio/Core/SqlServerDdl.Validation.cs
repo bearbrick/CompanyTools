@@ -89,8 +89,10 @@ public static partial class SqlServerDdl
                 p + "排序规则仅适用于字符类型，名称只允许字母数字和下划线。");
             Need(c.Type != "rowversion" || c.Default == "", p + "rowversion 不支持默认值。");
             Need(Expression(c.Default) && Expression(c.Computed), p + "请输入单个 SQL 表达式，不包含批处理或 DDL 语句。");
+            Need(c.DefaultConstraintName == "" || Identifier(c.DefaultConstraintName), p + "默认约束名称最多 128 字符，不能包含控制字符。");
         }
-        var constraintNames = pk.Count == 0 ? new List<string>() : new List<string> { table.PrimaryKeyName == "" ? "PK_" + table.Name : table.PrimaryKeyName };
+        var constraintNames = pk.Count == 0 || table.PrimaryKeySystemNamed ? new List<string>() : new List<string> { table.PrimaryKeyName == "" ? "PK_" + table.Name : table.PrimaryKeyName };
+        constraintNames.AddRange(table.Columns.Where(c => c.Default != "" && c.DefaultConstraintName != "" && !c.DefaultConstraintSystemNamed).Select(c => c.DefaultConstraintName));
         bool LocalColumns(string value, bool required = true)
         {
             var names = Names(value);

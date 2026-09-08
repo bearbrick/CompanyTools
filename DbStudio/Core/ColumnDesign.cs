@@ -88,6 +88,12 @@ public class ColumnDesign
     /// </summary>
     public string Default { get; set; } = "";
 
+    /// <summary>默认约束的实际名称；留空时由 SQL Server 命名。删除默认值后不生成该约束。</summary>
+    public string DefaultConstraintName { get; set; } = "";
+
+    /// <summary>实际库是否自动命名该默认约束。生成模型时保留匿名声明，避免无意义的重建。</summary>
+    public bool DefaultConstraintSystemNamed { get; set; }
+
     /// <summary>
     /// 计算列表达式；留空表示普通字段。
     /// </summary>
@@ -112,7 +118,7 @@ public class ColumnDesign
     public string InputLimit { get; set; } = "";
 
     /// <summary>
-    /// 字段备注，写入扩展属性。
+    /// 设计补充说明，仅保存在 Studio，不写入数据库 MS_Description。
     /// </summary>
     public string Comment { get; set; } = "";
 }

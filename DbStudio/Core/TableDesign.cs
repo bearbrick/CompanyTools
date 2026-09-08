@@ -31,12 +31,14 @@ public class TableDesign
     public string Module { get; set; } = "未分组";
 
     /// <summary>
-    /// 表备注，导出为扩展属性。
+    /// 表设计补充说明，仅保存在 Studio，不写入数据库 MS_Description。
     /// </summary>
     public string Comment { get; set; } = "";
 
     /// <summary>主键约束名，留空时使用 PK_表名。</summary>
     public string PrimaryKeyName { get; set; } = "";
+    /// <summary>实际库主键是否由系统命名；保留匿名声明以匹配 DacFx 提取模型。</summary>
+    public bool PrimaryKeySystemNamed { get; set; }
     /// <summary>主键是否聚集，空值时自动根据其他索引推导。</summary>
     public bool? PrimaryKeyClustered
     {

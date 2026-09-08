@@ -54,6 +54,8 @@ public static class SqlServerCatalog
                 IdentitySeed = rows.IsDBNull(9) ? 1 : Convert.ToInt64(rows.GetValue(9)),
                 IdentityIncrement = rows.IsDBNull(10) ? 1 : Convert.ToInt64(rows.GetValue(10)),
                 Default = rows.GetString(11),
+                DefaultConstraintName = rows.GetString(22),
+                DefaultConstraintSystemNamed = rows.GetBoolean(23),
                 Computed = rows.GetString(12),
                 Persisted = rows.GetBoolean(13),
                 Collation = rows.GetString(14),
@@ -91,6 +93,7 @@ public static class SqlServerCatalog
             if (rows.GetBoolean(5))
             {
                 table.PrimaryKeyName = index.Name;
+                table.PrimaryKeySystemNamed = rows.GetBoolean(10);
                 table.PrimaryKeyClustered = index.Clustered;
             }
             else
@@ -197,7 +200,8 @@ public static class SqlServerCatalog
         SELECT c.object_id,c.column_id,c.name,ty.name,c.max_length,c.precision,c.scale,c.is_nullable,c.is_identity,
             ic.seed_value,ic.increment_value,COALESCE(dc.definition,''),COALESCE(cc.definition,''),COALESCE(cc.is_persisted,CONVERT(bit,0)),
             COALESCE(c.collation_name,''),COALESCE(CONVERT(nvarchar(4000),ep.value),''),CONVERT(nvarchar(128),DATABASEPROPERTYEX(DB_NAME(),'Collation')),
-            ty.is_user_defined,c.is_sparse,c.xml_collection_id,c.is_filestream,c.generated_always_type
+            ty.is_user_defined,c.is_sparse,c.xml_collection_id,c.is_filestream,c.generated_always_type,
+            COALESCE(dc.name,''),COALESCE(dc.is_system_named,CONVERT(bit,0))
         FROM sys.columns c JOIN sys.tables t ON t.object_id=c.object_id JOIN sys.types ty ON ty.user_type_id=c.user_type_id
         LEFT JOIN sys.identity_columns ic ON ic.object_id=c.object_id AND ic.column_id=c.column_id
         LEFT JOIN sys.default_constraints dc ON dc.object_id=c.default_object_id
@@ -205,8 +209,9 @@ public static class SqlServerCatalog
         LEFT JOIN sys.extended_properties ep ON ep.class=1 AND ep.major_id=c.object_id AND ep.minor_id=c.column_id AND ep.name='MS_Description'
         WHERE t.is_ms_shipped=0 ORDER BY c.object_id,c.column_id;
 
-        SELECT i.object_id,i.index_id,i.name,i.type,i.is_unique,i.is_primary_key,i.is_unique_constraint,COALESCE(i.filter_definition,''),i.is_disabled,CONVERT(bit,CASE WHEN ds.type='PS' THEN 1 ELSE 0 END)
+        SELECT i.object_id,i.index_id,i.name,i.type,i.is_unique,i.is_primary_key,i.is_unique_constraint,COALESCE(i.filter_definition,''),i.is_disabled,CONVERT(bit,CASE WHEN ds.type='PS' THEN 1 ELSE 0 END),COALESCE(kc.is_system_named,CONVERT(bit,0))
         FROM sys.indexes i JOIN sys.tables t ON t.object_id=i.object_id LEFT JOIN sys.data_spaces ds ON ds.data_space_id=i.data_space_id
+        LEFT JOIN sys.key_constraints kc ON kc.parent_object_id=i.object_id AND kc.unique_index_id=i.index_id
         WHERE t.is_ms_shipped=0 AND i.index_id>0 AND i.is_hypothetical=0 ORDER BY i.object_id,i.index_id;
         SELECT ic.object_id,ic.index_id,ic.column_id,ic.key_ordinal,ic.is_included_column,ic.is_descending_key
         FROM sys.index_columns ic JOIN sys.tables t ON t.object_id=ic.object_id WHERE t.is_ms_shipped=0 ORDER BY ic.object_id,ic.index_id,ic.is_included_column,ic.key_ordinal,ic.index_column_id;

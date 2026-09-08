@@ -378,6 +378,9 @@ public partial class Home : IDisposable
 
             copy.Identity = false;
             copy.PrimaryKeyOrder = 0;
+            // 副本保留默认表达式，但不能复用原字段的约束标识。
+            copy.DefaultConstraintName = "";
+            copy.DefaultConstraintSystemNamed = false;
             table.Columns.Add(copy);
         }
         MarkDirty();

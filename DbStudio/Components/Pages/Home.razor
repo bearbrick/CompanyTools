@@ -272,7 +272,14 @@
 @if (modal == "table" && table != null)
 {
     <fieldset><div class="form-grid"><label>显示名称<input @bind="table.Label" @bind:after="MarkDirty" @bind:event="oninput" /></label><label>表名<input class="mono" @bind="table.Name" @bind:after="MarkDirty" @bind:event="oninput" /></label><label>架构<input @bind="table.Schema" @bind:after="MarkDirty" @bind:event="oninput" /></label><label>模块<StudioSelect Label="模块" @bind-Value="table.Module" @bind-Value:after="MarkDirty" Items="ModuleOptions" AllowCustom="true" SearchPlaceholder="选择模块或输入新模块…" /></label><label class="wide">备注<textarea @bind="table.Comment" @bind:after="MarkDirty" @bind:event="oninput" rows="3"></textarea></label></div></fieldset>
-    <fieldset disabled="@(!CanDesign)"><div class="form-grid"><label>主键约束名称<input @bind="table.PrimaryKeyName" @bind:after="MarkDirty" @bind:event="oninput" placeholder="留空自动生成 PK_表名" /></label><label>主键降序字段<input @bind="table.PrimaryKeyDescendingColumns" @bind:after="MarkDirty" @bind:event="oninput" placeholder="英文逗号分隔，可选" /></label></div><label class="inline-check"><input type="checkbox" checked="@(table.PrimaryKeyClustered ?? !table.Indexes.Any(i => i.Clustered))" @onchange="e => { table.PrimaryKeyClustered = (bool)e.Value!; MarkDirty(); }" /> 主键使用聚集索引</label></fieldset>
+    <fieldset disabled="@(!CanDesign)">
+        <div class="form-grid">
+            <label>主键约束名称<input @bind="table.PrimaryKeyName" @bind:after="() => { table.PrimaryKeySystemNamed = false; MarkDirty(); }" @bind:event="oninput" placeholder="留空自动生成 PK_表名" /></label>
+            <label>主键降序字段<input @bind="table.PrimaryKeyDescendingColumns" @bind:after="MarkDirty" @bind:event="oninput" placeholder="英文逗号分隔，可选" /></label>
+        </div>
+        @if (table.PrimaryKeySystemNamed) { <p class="muted">此主键由数据库自动命名，当前保留原命名方式；编辑名称后改用指定名称。</p> }
+        <label class="inline-check"><input type="checkbox" checked="@(table.PrimaryKeyClustered ?? !table.Indexes.Any(i => i.Clustered))" @onchange="e => { table.PrimaryKeyClustered = (bool)e.Value!; MarkDirty(); }" /> 主键使用聚集索引</label>
+    </fieldset>
     <div class="modal-footer">
         @if (project!.Tables.Any(item => item.Id == table.Id))
         {
@@ -293,7 +300,13 @@
         @if (advanced.Type == "float") { <div class="drawer-section"><label>float 精度（1～53，留空使用默认）<input type="number" min="1" max="53" @bind="advanced.FloatPrecision" @bind:after="MarkDirty" @bind:event="oninput" /></label></div> }
         <div class="drawer-section"><h3>主键与自增</h3><label>复合主键顺序（0 表示非主键）<input type="number" min="0" @bind="advanced.PrimaryKeyOrder" @bind:after="MarkDirty" @bind:event="oninput" /></label><label class="inline-check"><input type="checkbox" @bind="advanced.Identity" @bind:after="MarkDirty" /> 自增 IDENTITY</label><div class="form-grid"><label>起始值<input type="number" @bind="advanced.IdentitySeed" @bind:after="MarkDirty" @bind:event="oninput" /></label><label>步长<input type="number" @bind="advanced.IdentityIncrement" @bind:after="MarkDirty" @bind:event="oninput" /></label></div></div>
         <div class="drawer-section"><h3>计算列</h3><label>计算表达式<textarea rows="3" class="mono" @bind="advanced.Computed" @bind:after="MarkDirty" @bind:event="oninput" placeholder="[Quantity] * [UnitPrice]"></textarea></label><label class="inline-check"><input type="checkbox" @bind="advanced.Persisted" @bind:after="MarkDirty" /> 持久化 PERSISTED</label></div>
-        <div class="drawer-section"><h3>默认值与排序规则</h3><label>默认值 SQL 表达式<input class="mono" @bind="advanced.Default" @bind:after="MarkDirty" @bind:event="oninput" placeholder="例如 0、N'启用'、GETDATE()" /></label><label>字符排序规则<input class="mono" @bind="advanced.Collation" @bind:after="MarkDirty" @bind:event="oninput" placeholder="留空使用数据库默认值" /></label></div>
+        <div class="drawer-section">
+            <h3>默认值与排序规则</h3>
+            <label>默认值 SQL 表达式<input class="mono" @bind="advanced.Default" @bind:after="MarkDirty" @bind:event="oninput" placeholder="例如 0、N'启用'、GETDATE()" /></label>
+            <label>默认约束名称<input class="mono" @bind="advanced.DefaultConstraintName" @bind:after="() => { advanced.DefaultConstraintSystemNamed = false; MarkDirty(); }" @bind:event="oninput" placeholder="留空由数据库命名" /></label>
+            @if (advanced.DefaultConstraintSystemNamed) { <p class="muted">当前保留数据库自动命名方式；编辑名称后改用指定名称。</p> }
+            <label>字符排序规则<input class="mono" @bind="advanced.Collation" @bind:after="MarkDirty" @bind:event="oninput" placeholder="留空使用数据库默认值" /></label>
+        </div>
     </fieldset><div class="modal-footer"><span class="muted">完成后，点击「保存设计」统一保存。</span><button class="primary" @onclick='() => modal = ""'>完成编辑</button></div>
 }
 @if (modal == "project")

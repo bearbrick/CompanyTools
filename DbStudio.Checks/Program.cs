@@ -53,7 +53,7 @@ Check("Computed persisted generated", ddl.Contains("[Total] AS ([Price] * [Quant
 Check("Composite FK order", ddl.Contains("FOREIGN KEY ([TenantId], [ParentId]) REFERENCES [dbo].[Parent] ([TenantId], [Id])"));
 Check("Index include/filter", ddl.Contains("INCLUDE ([Price]) WHERE [Quantity] > 0"));
 Check("Unique constraint", ddl.Contains("UNIQUE NONCLUSTERED ([Name])"));
-Check("Descriptions escaped", ddl.Contains("包含 '' 引号"));
+Check("Design notes excluded from database descriptions", !ddl.Contains("包含 '' 引号") && ddl.Contains("N'子表'"));
 var parser = new TSql160Parser(true);
 parser.Parse(new StringReader(ddl), out var parseErrors);
 Check("Generated comprehensive DDL parses with Microsoft ScriptDom", parseErrors.Count == 0);
@@ -283,6 +283,7 @@ foreach (var t in imported.Tables)
 }
 Check("All imported table scripts parse with Microsoft ScriptDom: " + string.Join(" | ", syntaxProblems), syntaxProblems.Count == 0);
 ModelPackageChecks.Run(Check);
+ConstraintIdentityChecks.Run(Check);
 await DeployReportChecks.RunAsync(Check);
 Check("Full imported project builds as a DacFx comparison package", SqlServerTools.BuildPackage(imported).Length > 0);
 File.WriteAllText(Path.Combine(root, "Seed", "validation-report.json"), JsonSerializer.Serialize(sourceProblems, ModelJson.Options));

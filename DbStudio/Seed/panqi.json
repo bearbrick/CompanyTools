@@ -8258,7 +8258,7 @@
       "Id": "f47e663c0bf65251bc9eec7450dcaefc",
       "Schema": "dbo",
       "Name": "ERP_Sales_CustomerOrderSuspendLog",
-      "Label": "客户订单行扩展",
+      "Label": "客户订单暂停记录",
       "Module": "销售管理 （Sales）",
       "Comment": "",
       "Columns": [
@@ -11963,7 +11963,7 @@
       "Id": "134a6d3cf3da51078c38aba2c5c96b0e",
       "Schema": "dbo",
       "Name": "ERP_Mfg_ProdTechSuspendLog",
-      "Label": "客户订单行扩展",
+      "Label": "制造工艺暂停记录",
       "Module": "生产管理 （Manufaturing） 缩写（Mfg）",
       "Comment": "",
       "Columns": [
@@ -19738,7 +19738,7 @@
       "Id": "74feb238f4d15ffe82b67931efad5087",
       "Schema": "dbo",
       "Name": "ERP_Inv_DispatchReceive",
-      "Label": "发货记录",
+      "Label": "发货接收",
       "Module": "库存仓储管理 （Inventory） 缩写（Inv）",
       "Comment": "",
       "Columns": [
@@ -20078,7 +20078,7 @@
       "Id": "dcbc946133fc51cfb7157ad4d63d73fe",
       "Schema": "dbo",
       "Name": "ERP_Inv_DispatchReceiveDetail",
-      "Label": "发货记录明细",
+      "Label": "发货接收明细",
       "Module": "库存仓储管理 （Inventory） 缩写（Inv）",
       "Comment": "",
       "Columns": [
