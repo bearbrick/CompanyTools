@@ -68,9 +68,11 @@
             @if (Can(Permission.Projects)) { <button class="project-add" @onclick="OpenNewProject"><Icon Name="plus-lg" /> 创建项目</button> }
         </aside>
         <main class="main-content">
-        @if (view == "database" && project != null)
+        @if ((view == "database" || view == "table-database") && project != null)
         {
-            <DatabaseToolsPanel @key="project.Id" Project="project" Principal="principal" Saved="ProjectSettingsSaved" BusyChanged="value => databaseBusy = value" />
+            <DatabaseToolsPanel @key="(project.Id, view, tableComparisonId)" Project="project" Principal="principal"
+                                TableId='@(view == "table-database" ? tableComparisonId : null)' ReturnRequested="ReturnFromTableComparison"
+                                Saved="ProjectSettingsSaved" BusyChanged="value => databaseBusy = value" />
         }
         else if (view == "security")
         {
@@ -100,7 +102,7 @@
                     <div class="table-identity"><h1>@table.Label</h1><div class="physical-name"><span class="mono" title="@($"{table.Schema}.{table.Name}")">@table.Schema.@table.Name</span><button class="icon-button" aria-label="编辑表信息" disabled="@(!CanDesign)" @onclick='() => modal = "table"'><Icon Name="pencil" /></button></div></div>
                     <div class="save-actions"><span class="save-state @(dirty ? "unsaved" : "")"><span class="state-dot"></span>@(dirty ? "有未保存修改" : "所有更改已保存")</span><button class="text-button" @onclick="CheckDesign"><Icon Name="shield-check" /> 检查设计</button><button class="text-button" disabled="@(!dirty)" @onclick="Refresh">撤销</button><button class="primary save-button" disabled="@(!CanDesign)" @onclick="Save"><Icon Name="floppy" /> 保存设计 <kbd>Ctrl S</kbd></button></div>
                 </div>
-                <div class="table-meta"><span class="table-note" title="@table.Comment">备注 <b>@(table.Comment == "" ? "暂无备注" : table.Comment)</b></span><button class="text-button muted" disabled="@(!CanDesign)" @onclick='() => modal = "table"'>编辑信息 <Icon Name="pencil" /></button><button class="text-button duplicate-table" disabled="@(!CanDesign)" @onclick="OpenTableCopy"><Icon Name="copy" /> 复制表</button></div>
+                <div class="table-meta"><span class="table-note" title="@table.Comment">备注 <b>@(table.Comment == "" ? "暂无备注" : table.Comment)</b></span><button class="text-button muted" disabled="@(!CanDesign)" @onclick='() => modal = "table"'>编辑信息 <Icon Name="pencil" /></button><button class="text-button" disabled="@(!CanCompareTable)" @onclick="OpenTableComparison"><Icon Name="arrow-down-up" /> @(dirty ? "保存并比对" : "结构比对")</button><button class="text-button duplicate-table" disabled="@(!CanDesign)" @onclick="OpenTableCopy"><Icon Name="copy" /> 复制表</button></div>
             </section>
             <nav class="tabs" aria-label="表设计选项">
                 <button class="@(tab == "fields" ? "active" : "")" @onclick='() => OpenTab("fields")'>字段定义 <span>@table.Columns.Count</span></button>

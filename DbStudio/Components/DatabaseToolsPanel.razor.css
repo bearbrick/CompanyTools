@@ -1,0 +1,5 @@
+.single-table-actions { grid-template-columns: minmax(0, 1fr); }
+.table-comparison-scope { display: flex; gap: 10px 16px; align-items: center; flex-wrap: wrap; padding: 12px 16px; margin-bottom: 16px; border: 1px solid #d8e4f7; border-left: 3px solid #2563d8; background: #f1f6ff; border-radius: 6px; }
+.table-comparison-scope strong { font-size: 15px; }
+.table-comparison-scope code { color: #24538e; font-size: 12px; overflow-wrap: anywhere; }
+.table-comparison-scope > span:last-child { color: #7085a1; font-size: 12px; }

@@ -271,6 +271,7 @@ await SharePageChecks.RunAsync(Check);
 RevisionChecks.Run(store, nextAdmin!, testPath, Check);
 TableCopyChecks.Run(store, nextAdmin!, workerA, Check);
 ModuleOrderChecks.Run(store, nextAdmin!, workerA, Check);
+TableDeploymentChecks.Run(Check);
 
 var sourceProblems = imported.Tables.Select(t => new { t.Name, Errors = SqlServerDdl.Validate(imported, t) }).Where(x => x.Errors.Count > 0).ToList();
 Check("All imported tables pass supported structural validation", sourceProblems.Count == 0);
@@ -295,6 +296,7 @@ var sqlTestServer = Environment.GetEnvironmentVariable("STUDIO_SQLTEST_SERVER");
 if (!string.IsNullOrWhiteSpace(sqlTestServer))
 {
     await DatabaseChecks.RunAsync(store, nextAdmin!, sqlTestServer, Check);
+    await SingleTableDatabaseChecks.RunAsync(store, nextAdmin!, sqlTestServer, Check);
 }
 Console.WriteLine($"SUCCESS: {passed} checks passed. Isolated data: {testPath}");
 

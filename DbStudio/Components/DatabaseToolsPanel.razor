@@ -4,9 +4,13 @@
 @inject IJSRuntime JS
 
 <section class="database-tools">
-    <div class="tools-heading"><div><p class="muted">@Project.Name / SQL Server</p><h1>数据库工具</h1><p>连接实际数据库，反推设计或比对并同步已保存的结构。</p></div><span class="subtle-tag">项目独立连接</span></div>
+    <div class="tools-heading"><div><p class="muted">@Project.Name / SQL Server</p><h1>@(SingleTable ? "单表结构比对" : "数据库工具")</h1><p>@(SingleTable ? "比对当前表的已保存设计，核对差异后同步到目标数据库。" : "连接实际数据库，反推设计或比对并同步已保存的结构。")</p></div>@if (SingleTable) { <button disabled="@busy" @onclick="ReturnRequested"><Icon Name="arrow-left" /> 返回表设计</button> } else { <span class="subtle-tag">项目独立连接</span> }</div>
     @if (problem != "") { <pre class="settings-error" role="alert">@problem</pre> }
     @if (notice != "") { <p class="settings-notice" role="status">@notice</p> }
+    @if (SingleTable)
+    {
+        <div class="table-comparison-scope"><span class="eyebrow">当前表</span><strong>@ScopeTable?.Label</strong><code>@ScopeTable?.Schema.@ScopeTable?.Name</code><span>使用已保存设计；涉及其他表的依赖变更时会停止单表同步。</span></div>
+    }
     @if (busy) { <div class="tools-progress" role="status">@progress <button @onclick="Cancel">取消操作</button></div> }
     <fieldset disabled="@busy">
         <div class="connection-bar"><label>当前连接<StudioSelect Label="当前数据库连接" Value="@connectionId" ValueChanged="SelectConnection" Items="ConnectionOptions" Placeholder="先添加数据库连接" /></label><button disabled="@(connectionId == "")" @onclick="Test">测试连接</button><button @onclick="RefreshConnections">刷新连接</button>@if (manage) { <button @onclick="NewConnection">新增连接</button><button disabled="@(connectionId == "")" @onclick="EditConnection">编辑连接</button><button class="text-button danger" disabled="@(connectionId == "")" @onclick="RequestDeleteConnection">删除连接</button> }</div>
@@ -27,9 +31,11 @@
                 @if (authentication == "sql") { <label>SQL 登录账号<input autocomplete="off" @bind="edit.UserName" @bind:event="oninput" /></label><label>密码<input type="password" autocomplete="new-password" @bind="password" @bind:event="oninput" placeholder="编辑时留空保留原密码" /></label> }
             </div><label class="check-label"><input type="checkbox" @bind="edit.TrustServerCertificate" /> 信任服务器证书（自签名证书的内网环境）</label><p class="muted">连接由应用服务器发起。Windows 认证使用应用运行账号；SQL 密码加密保存，不进入项目备份或分享。</p><div class="modal-footer"><button @onclick="() => edit = null">取消</button><button class="primary" @onclick="SaveConnection">保存连接</button></div></section>
         }
-        <div class="tools-actions">
+        <div class="tools-actions @(SingleTable ? "single-table-actions" : "")">
+            @if (!SingleTable) {
             <article><span class="eyebrow">DATABASE → DESIGN</span><h2>从数据库反推设计</h2><p>读取表、字段、索引、外键和检查约束。预览后合并到当前项目。</p><button disabled="@(connectionId == "")" @onclick="Reverse">读取结构并预览</button></article>
-            <article><span class="eyebrow">DESIGN → DATABASE</span><h2>结构比对与同步</h2><p>按已保存设计生成差异和 SQL 脚本，核对后再执行。</p><label class="check-label"><input type="checkbox" @bind="prune" @bind:after="InvalidatePlan" /> 删除数据库中设计未定义的表、列和约束</label><label class="check-label"><input type="checkbox" @bind="allowDataLoss" @bind:after="InvalidatePlan" /> 允许可能丢失数据的变更</label><button class="primary" disabled="@(connectionId == "")" @onclick="Compare">开始比对</button></article>
+            }
+            <article><span class="eyebrow">DESIGN → DATABASE</span><h2>结构比对与同步</h2><p>按已保存设计生成差异和 SQL 脚本，核对后再执行。</p><label class="check-label"><input type="checkbox" @bind="prune" @bind:after="InvalidatePlan" /> @(SingleTable ? "删除当前表中设计未定义的列、索引和约束" : "删除数据库中设计未定义的表、列和约束")</label><label class="check-label"><input type="checkbox" @bind="allowDataLoss" @bind:after="InvalidatePlan" /> 允许可能丢失数据的变更</label><button class="primary" disabled="@(connectionId == "")" @onclick="Compare">@(SingleTable ? "比对当前表" : "开始比对")</button></article>
         </div>
         @if (snapshot != null)
         {
@@ -39,14 +45,14 @@
         }
         @if (plan != null)
         {
-            <section class="tools-result"><div class="section-title"><div><h2>结构差异 <span>@plan.Changes.Count</span></h2><p class="muted">目标 @Selected?.Server / @plan.Database · 设计 r@(plan.ProjectRevision) · 计划有效至 @plan.ExpiresAt.ToLocalTime().ToString("HH:mm")</p></div><button @onclick="DownloadPlan">下载同步 SQL</button></div>
+            <section class="tools-result"><div class="section-title"><div><h2>结构差异 <span>@plan.Changes.Count</span></h2><p class="muted">目标 @Selected?.Server / @plan.Database · 范围 @(plan.Scope?.DisplayName ?? "整库") · 设计 r@(plan.ProjectRevision) · 计划有效至 @plan.ExpiresAt.ToLocalTime().ToString("HH:mm")</p></div><button @onclick="DownloadPlan">下载同步 SQL</button></div>
                 @if (plan.Changes.Count == 0) { <p class="settings-notice">当前比对选项下，设计与数据库结构一致。</p> }
                 <DatabaseWarnings Items="plan.Warnings" />
                 <div class="tools-table-scroll"><table class="list-table"><thead><tr><th>操作</th><th>对象类型</th><th>对象</th></tr></thead><tbody>@foreach (var change in plan.Changes) { <tr><td>@OperationName(change.Operation)</td><td>@change.ObjectType</td><td class="mono">@change.Name</td></tr> }</tbody></table></div>
                 <details class="plan-script"><summary>查看完整同步脚本</summary><pre>@plan.Script</pre></details>
                 @if (plan.Changes.Count > 0)
                 {
-                    <div class="execute-panel"><h3>执行到实际数据库</h3><p>执行会修改 <b>@Selected?.Server / @plan.Database</b>。请核对脚本并做好备份。@(plan.Prune ? "本计划包含删除多余对象。" : "") @(plan.AllowDataLoss ? "本计划允许数据丢失。" : "")</p><label class="check-label"><input type="checkbox" @bind="reviewed" /> 我已核对目标和同步脚本</label><label>输入目标数据库名称确认<input @bind="confirmedDatabase" @bind:event="oninput" placeholder="@plan.Database" /></label><button class="primary" disabled="@(!reviewed || confirmedDatabase != plan.Database)" @onclick="Execute">执行同步</button></div>
+                    <div class="execute-panel"><h3>执行到实际数据库</h3><p>执行会修改 <b>@Selected?.Server / @plan.Database</b>。@(plan.Scope == null ? "" : $"本计划范围：{plan.Scope.DisplayName}。")请核对脚本并做好备份。@(plan.Prune ? "本计划包含删除多余对象。" : "") @(plan.AllowDataLoss ? "本计划允许数据丢失。" : "")</p><label class="check-label"><input type="checkbox" @bind="reviewed" /> 我已核对目标和同步脚本</label><label>输入目标数据库名称确认<input @bind="confirmedDatabase" @bind:event="oninput" placeholder="@plan.Database" /></label><button class="primary" disabled="@(!reviewed || confirmedDatabase != plan.Database)" @onclick="Execute">执行同步</button></div>
                 }
             </section>
         }
@@ -101,7 +107,7 @@
     private void SaveConnection() => Handle(() => { edit!.IntegratedSecurity = authentication == "windows"; var saved = Store.SaveConnection(Principal, edit, password); connections = Store.Connections(Principal, Project.Id); SelectConnection(saved.Id); password = ""; notice = "连接配置已保存，可以测试连接。"; });
     private Task Test() => Perform("正在测试连接…", async token => notice = "连接成功：" + await Tools.TestAsync(Principal, Project.Id, connectionId, token));
     private Task Reverse() => Perform("正在读取数据库结构…", async token => { snapshot = null; InvalidatePlan(); snapshotRevision = Project.Revision; snapshot = await Tools.ReverseAsync(Principal, Project.Id, connectionId, token); reversePreview = DatabaseMerge.Preview(Project, snapshot); });
-    private Task Compare() => Perform("正在比对结构并生成脚本…", async token => { snapshot = null; InvalidatePlan(); plan = await Tools.CompareAsync(Principal, Project.Id, connectionId, prune, allowDataLoss, token); });
+    private Task Compare() => Perform("正在比对结构并生成脚本…", async token => { snapshot = null; InvalidatePlan(); plan = await CompareScopeAsync(token); });
     private async Task ApplySnapshot(List<string> selectedIds)
     {
         DesignProject? updated = null;

@@ -15,13 +15,14 @@ public record SchemaChange(string Operation, string ObjectType, string Name);
 
 /// <summary>只包含可显示信息的同步计划，实际执行始终使用服务端保存的不可变包。</summary>
 public record DatabasePlan(string Id, string Database, int ProjectRevision, DateTimeOffset ExpiresAt,
-    List<SchemaChange> Changes, List<DeploymentWarning> Warnings, string Script, bool Prune, bool AllowDataLoss);
+    List<SchemaChange> Changes, List<DeploymentWarning> Warnings, string Script, bool Prune, bool AllowDataLoss,
+    TableDeploymentScope? Scope = null);
 
 /// <summary>
 /// SQL Server 工具编排。DacFx 负责语义比对和事务部署；浏览器不能提交任意 SQL 执行。
 /// 计划绑定项目、成员、连接版本和目标结构快照，执行前逐项复核。
 /// </summary>
-public sealed class SqlServerTools(StudioStore store)
+public sealed partial class SqlServerTools(StudioStore store)
 {
     private sealed record StoredPlan(DatabasePlan View, string ProjectId, string ConnectionId, int ConnectionRevision,
         string UserId, byte[] Package, string TargetHash);
@@ -48,46 +49,6 @@ public sealed class SqlServerTools(StudioStore store)
         var snapshot = await SqlServerCatalog.ReadAsync(credential.ConnectionString, cancellationToken);
         store.RequireProject(principal, projectId, ProjectAccess.Database, Permission.Design);
         return snapshot;
-    }
-
-    /// <summary>基于已保存设计和目标快照生成计划，不执行变更。默认保留目标多余对象并阻止可能的数据丢失。</summary>
-    public async Task<DatabasePlan> CompareAsync(ClaimsPrincipal principal, string projectId, string connectionId,
-        bool prune = false, bool allowDataLoss = false, CancellationToken cancellationToken = default)
-    {
-        var credential = store.Credential(principal, projectId, connectionId);
-        var project = store.DatabaseProject(principal, projectId);
-        foreach (var expired in plans.Where(p => p.Value.View.ExpiresAt < DateTimeOffset.UtcNow))
-        {
-            plans.TryRemove(expired.Key, out _);
-        }
-        if (plans.Values.Count(p => p.UserId == principal.UserId()) >= 20)
-        {
-            throw new InvalidOperationException("待执行计划过多，请等待旧计划过期后重试。");
-        }
-        return await Task.Run(() =>
-        {
-            var sourceBytes = BuildPackage(project);
-            var service = new DacServices(credential.ConnectionString);
-            var targetBytes = Extract(service, credential.Profile.Database, cancellationToken);
-            using var sourceStream = new MemoryStream(sourceBytes);
-            using var source = DacPackage.Load(sourceStream);
-            using var targetStream = new MemoryStream(targetBytes);
-            using var target = DacPackage.Load(targetStream);
-            var options = Options(prune, allowDataLoss);
-            var report = DacServices.GenerateDeployReport(source, target, credential.Profile.Database, options);
-            var script = DacServices.GenerateDeployScript(source, target, credential.Profile.Database, options);
-            var xml = XDocument.Parse(report);
-            var changes = xml.Descendants().Where(e => e.Name.LocalName == "Operation")
-                .SelectMany(operation => operation.Descendants().Where(e => e.Name.LocalName == "Item")
-                    .Select(item => new SchemaChange((string?)operation.Attribute("Name") ?? "", (string?)item.Attribute("Type") ?? "", (string?)item.Attribute("Value") ?? ""))).ToList();
-            var warnings = DeploymentWarnings.Parse(xml);
-            var plan = new DatabasePlan(Guid.NewGuid().ToString("N"), credential.Profile.Database, project.Revision,
-                DateTimeOffset.UtcNow.AddMinutes(15), changes, warnings, script, prune, allowDataLoss);
-            store.RequireProject(principal, projectId, ProjectAccess.Database, Permission.Design);
-            plans[plan.Id] = new(plan, projectId, connectionId, credential.Profile.Revision, principal.UserId(), sourceBytes, ModelHash(targetBytes));
-            store.LogDatabaseOperation(principal, projectId, "生成结构比对", $"{credential.Profile.Name} · {changes.Count} 项差异");
-            return plan;
-        }, cancellationToken);
     }
 
     /// <summary>
