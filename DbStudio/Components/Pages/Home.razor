@@ -121,8 +121,8 @@
                     <button disabled="@(!CanDesign || selected.Count == 0)" @onclick="CopyColumns"><Icon Name="copy" /> 复制行</button>
                     <button disabled="@(!CanDesign || selected.Count == 0)" @onclick="DeleteColumns"><Icon Name="trash3" /> 删除</button>
                     <span class="toolbar-divider"></span>
-                    <button class="icon-button" disabled="@(!CanDesign || selected.Count != 1)" title="上移字段" aria-label="上移字段" @onclick="() => MoveColumn(-1)"><Icon Name="arrow-up" /></button>
-                    <button class="icon-button" disabled="@(!CanDesign || selected.Count != 1)" title="下移字段" aria-label="下移字段" @onclick="() => MoveColumn(1)"><Icon Name="arrow-down" /></button>
+                    <button class="icon-button" disabled="@(!CanMoveColumns(-1))" title="上移选中字段（支持多选）" aria-label="上移选中字段" @onclick="() => MoveColumns(-1)"><Icon Name="arrow-up" /></button>
+                    <button class="icon-button" disabled="@(!CanMoveColumns(1))" title="下移选中字段（支持多选）" aria-label="下移选中字段" @onclick="() => MoveColumns(1)"><Icon Name="arrow-down" /></button>
                     <button class="text-button" disabled="@(!CanDesign)" @onclick='() => { paste = ""; modal = "paste"; }'><Icon Name="clipboard" /> 批量粘贴</button>
                     <div class="toolbar-spacer"></div>
                     <div class="search-box field-search"><Icon Name="search" /><input placeholder="查找字段…" aria-label="查找字段" @bind="fieldSearch" @bind:event="oninput" /></div>

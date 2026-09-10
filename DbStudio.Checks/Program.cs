@@ -276,6 +276,7 @@ await SharePageChecks.RunAsync(Check);
 RevisionChecks.Run(store, nextAdmin!, testPath, Check);
 TableCopyChecks.Run(store, nextAdmin!, workerA, Check);
 ModuleOrderChecks.Run(store, nextAdmin!, workerA, Check);
+ColumnOrderingChecks.Run(store, nextAdmin!, Check);
 TableDeploymentChecks.Run(Check);
 SchemaModelFingerprintChecks.Run(Check);
 SchemaDeploymentSecurityChecks.Run(Check);

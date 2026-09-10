@@ -403,27 +403,6 @@ public partial class Home : IDisposable
     }
 
     /// <summary>
-    /// 按方向移动唯一选中行，越界时保持原顺序。
-    /// </summary>
-    private void MoveColumn(int direction)
-    {
-        if (table == null || selected.Count != 1)
-        {
-            return;
-        }
-
-        var index = table.Columns.FindIndex(c => selected.Contains(c.Id));
-        var next = index + direction;
-        if (next < 0 || next >= table.Columns.Count)
-        {
-            return;
-        }
-
-        (table.Columns[index], table.Columns[next]) = (table.Columns[next], table.Columns[index]);
-        MarkDirty();
-    }
-
-    /// <summary>
     /// 设置复合主键顺序，加入主键时同步设为非空。
     /// </summary>
     private void SetPk(ColumnDesign c, bool on)
