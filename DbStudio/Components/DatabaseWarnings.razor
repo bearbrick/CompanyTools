@@ -21,7 +21,10 @@
                         </li>
                     }
                 </ol>
-                <details class="warning-raw"><summary>原始诊断 XML</summary><pre>@warning.RawXml</pre></details>
+                @if (!string.IsNullOrWhiteSpace(warning.RawXml))
+                {
+                    <details class="warning-raw"><summary>原始诊断 XML</summary><pre>@warning.RawXml</pre></details>
+                }
             </article>
         }
     </section>

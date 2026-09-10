@@ -94,6 +94,10 @@ public sealed partial class SqlServerTools(StudioStore store)
                 using var sourceStream = new MemoryStream(executionPackage);
                 using var source = DacPackage.Load(sourceStream);
                 var options = Options(plan.View.Prune, plan.View.AllowDataLoss);
+                if (!plan.View.AllowDataLoss && SchemaTypeExpansion.Assess(executionPackage, current, plan.View.Database, plan.View.Prune, cancellationToken).Count > 0)
+                {
+                    options.BlockOnPossibleDataLoss = false;
+                }
                 // 直接面向实际连接只读规划，不能只相信省略了用户登录映射的提取快照。
                 var executionReport = XDocument.Parse(service.GenerateDeployReport(source, credential.Profile.Database, options, cancellationToken));
                 var executionChanges = SchemaDeploymentBoundary.ReadChanges(executionReport);
@@ -125,9 +129,11 @@ public sealed partial class SqlServerTools(StudioStore store)
     }
 
     /// <summary>构建纯结构包：先声明非 dbo 架构，表与外键由 DacFx 统一解析依赖。</summary>
-    public static byte[] BuildPackage(DesignProject project)
+    public static byte[] BuildPackage(DesignProject project, string? collation = null)
     {
-        using var model = new TSqlModel(SqlServerVersion.Sql160, new TSqlModelOptions());
+        var modelOptions = new TSqlModelOptions();
+        if (!string.IsNullOrWhiteSpace(collation)) { modelOptions.Collation = collation; }
+        using var model = new TSqlModel(SqlServerVersion.Sql160, modelOptions);
         var script = new StringBuilder();
         foreach (var schema in project.Tables.Select(t => t.Schema).Distinct(StringComparer.OrdinalIgnoreCase).Where(s => !s.Equals("dbo", StringComparison.OrdinalIgnoreCase)))
         {
@@ -163,4 +169,12 @@ public sealed partial class SqlServerTools(StudioStore store)
 
     private static DacDeployOptions Options(bool prune, bool allowDataLoss)
         => SchemaDeploymentOptions.Create(prune, allowDataLoss);
+
+    /// <summary>设计中的默认排序规则继承目标库；不通过部署修改目标数据库排序规则。</summary>
+    private static string? TargetCollation(byte[] package)
+    {
+        using var input = new MemoryStream(package);
+        using var model = TSqlModel.LoadFromDacpac(input, new ModelLoadOptions());
+        return model.GetObjects(DacQueryScopes.All, DatabaseOptions.TypeClass).FirstOrDefault()?.GetProperty<string>(DatabaseOptions.Collation);
+    }
 }

@@ -41,12 +41,15 @@ public sealed partial class SqlServerTools
             var service = new DacServices(credential.ConnectionString);
             var measurement = new ComparisonMeasurement(progress, cancellationToken);
             var targetBytes = measurement.Run("读取数据库结构与依赖", () => Extract(service, credential.Profile.Database, cancellationToken));
-            var sourceBytes = measurement.Run("构建设计模型", () => scope == null ? BuildPackage(project) : TableDeployment.BuildPackage(project, scope, targetBytes));
+            var sourceBytes = measurement.Run("构建设计模型", () => scope == null ? BuildPackage(project, TargetCollation(targetBytes)) : TableDeployment.BuildPackage(project, scope, targetBytes));
             using var sourceStream = new MemoryStream(sourceBytes);
             using var source = DacPackage.Load(sourceStream);
             using var targetStream = new MemoryStream(targetBytes);
             using var target = DacPackage.Load(targetStream);
             var options = Options(prune, allowDataLoss);
+            var reductions = new List<string>();
+            var expansions = measurement.Run("核验类型容量与数据风险", () => SchemaTypeExpansion.Assess(sourceBytes, targetBytes, credential.Profile.Database, prune, cancellationToken, reductions));
+            if (expansions.Count > 0) { options.BlockOnPossibleDataLoss = false; }
             // 一次只读规划同时返回报告和脚本，避免两个 GenerateDeploy 调用重复计算部署计划。
             var result = measurement.Run("生成差异与同步脚本", () => DacServices.Script(source, target, credential.Profile.Database, new PublishOptions
             {
@@ -63,6 +66,18 @@ public sealed partial class SqlServerTools
                     () => { SchemaDeploymentBoundary.Validate(sourceBytes, targetBytes, scope, changes); return true; });
             }
             var warnings = DeploymentWarnings.Parse(xml);
+            if (reductions.Count > 0)
+            {
+                warnings.Insert(0, new("TypeCapacityReduction", "容量缩小，可能截断或丢失精度",
+                    "以下列的长度或数值容量缩小，超出范围的数据可能导致截断、舍入、溢出或同步失败。请先核对并处理现有数据。" + (allowDataLoss ? "你已手动允许可能丢失数据的变更。" : "本计划保留数据丢失保护，不自动放行。"),
+                    reductions.Select(message => new DeploymentIssue("", message, [])).ToList(), ""));
+            }
+            if (expansions.Count > 0)
+            {
+                warnings.RemoveAll(w => w.Code == "DataIssue");
+                warnings.Insert(0, new("SafeTypeExpansion", "容量扩展，自动放行", "已核验整份计划仅包含可证明不缩小容量的类型扩展及说明变更，无需勾选允许丢失数据。索引、外键等有效性仍由数据库检查。",
+                    expansions.Select(message => new DeploymentIssue("", message, [])).ToList(), ""));
+            }
             var plan = new DatabasePlan(Guid.NewGuid().ToString("N"), credential.Profile.Database, project.Revision,
                 DateTimeOffset.UtcNow.AddMinutes(15), changes, warnings, result.DatabaseScript, prune, allowDataLoss, scope, measurement.Timings.ToArray());
             store.RequireProject(principal, projectId, ProjectAccess.Database, Permission.Design);

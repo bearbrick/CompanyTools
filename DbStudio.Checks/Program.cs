@@ -282,6 +282,7 @@ SchemaDeploymentSecurityChecks.Run(Check);
 SchemaDeploymentBoundaryChecks.Run(Check);
 SchemaDriftChecks.Run(Check);
 ProjectSqlChecks.Run(Check);
+TypeExpansionChecks.Run(Check);
 await StructureArchiveChecks.RunAsync(store, nextAdmin!, workerA, testPath, Check);
 
 var sourceProblems = imported.Tables.Select(t => new { t.Name, Errors = SqlServerDdl.Validate(imported, t) }).Where(x => x.Errors.Count > 0).ToList();
@@ -308,6 +309,7 @@ if (!string.IsNullOrWhiteSpace(sqlTestServer))
 {
     await DatabaseChecks.RunAsync(store, nextAdmin!, sqlTestServer, Check);
     await SingleTableDatabaseChecks.RunAsync(store, nextAdmin!, sqlTestServer, Check);
+    await TypeExpansionDatabaseChecks.RunAsync(store, nextAdmin!, sqlTestServer, Check);
 }
 Console.WriteLine($"SUCCESS: {passed} checks passed. Isolated data: {testPath}");
 

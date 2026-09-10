@@ -28,7 +28,9 @@ internal static class SingleTableDatabaseChecks
         project = store.SaveTable(admin, project.Id, project.Revision, fresh);
         var freshPlan = await tools.CompareTableAsync(admin, project.Id, profile.Id, fresh.Id);
         check("SQL single-table new table accepts anonymous default report names", freshPlan.Changes.Any(c => c.ObjectType == "SqlDefaultConstraint"));
-        check("SQL comparison exposes measured stages", freshPlan.Timings is { Count: 4 } && freshPlan.Timings.All(t => t.Milliseconds >= 0));
+        check("SQL comparison exposes measured stages", freshPlan.Timings is { Count: >= 4 }
+            && freshPlan.Timings.All(t => t.Milliseconds >= 0)
+            && freshPlan.Timings.Any(t => t.Stage == "核验类型容量与数据风险"));
         // 复现单表仍不存在，但预览后其他表发生变化的场景；同步不得误拦或覆盖那张表。
         using (var concurrent = new SqlConnection(new SqlConnectionStringBuilder(connectionString) { InitialCatalog = database }.ConnectionString))
         {
