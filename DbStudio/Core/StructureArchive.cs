@@ -1,6 +1,6 @@
 namespace DbStudio.Core;
 
-/// <summary>PDF 归档的文档信息；只作用于本次导出，不修改项目或伪造审批结果。</summary>
+/// <summary>PDF 归档的文档信息；只作用于本次导出，不修改项目。</summary>
 public sealed class StructureArchiveOptions
 {
     /// <summary>档案编号，最多 80 字符。</summary>
@@ -15,7 +15,7 @@ public sealed class StructureArchiveOptions
     public string Environment { get; set; } = "";
     /// <summary>编制部门。</summary>
     public string Department { get; set; } = "";
-    /// <summary>编制人；签字栏仍留待本人确认。</summary>
+    /// <summary>编制人。</summary>
     public string PreparedBy { get; set; } = "";
     /// <summary>文档密级或分发范围。</summary>
     public string Classification { get; set; } = "内部";
@@ -65,6 +65,10 @@ public static class StructureArchiveText
     public static IEnumerable<TableDesign> Tables(DesignProject project) => ModuleOrdering.Names(project)
         .SelectMany(module => project.Tables.Where(table => table.Module == module));
 
+    /// <summary>归档中物理英文名始终与中文业务名成对出现；历史空名称明确标记待补。</summary>
+    public static string TableTitle(TableDesign table) =>
+        $"{table.Schema}.{table.Name}  |  {(string.IsNullOrWhiteSpace(table.Label) ? "（未填写中文名）" : table.Label.Trim())}";
+
     /// <summary>空值限制留白表示可空；计算列的空值性由表达式决定，不能照搬普通字段开关。</summary>
     public static string Nullability(ColumnDesign column) => column.Computed != "" ? "表达式推导" : column.Nullable ? "" : "不可空";
 
@@ -85,13 +89,45 @@ public static class StructureArchiveText
         return string.IsNullOrWhiteSpace(column.Default) ? "无" : column.Default;
     }
 
-    /// <summary>业务名称和设计备注均保留，不把备注混为数据库扩展属性。</summary>
+    /// <summary>说明列只保留备注和输入位数；中文定义名在字段名后单独成列。</summary>
     public static string Description(ColumnDesign column) => string.Join("\n", new[]
     {
-        column.Label,
         column.Comment == "" ? "" : "备注：" + column.Comment,
         column.InputLimit == "" ? "" : "输入位数：" + column.InputLimit
     }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    /// <summary>字段行内只用实心圆标识主键字段，留白表示否。</summary>
+    public static string PrimaryKeyMarker(TableDesign table, ColumnDesign column)
+    {
+        _ = table;
+        return column.PrimaryKeyOrder > 0 ? "●" : "";
+    }
+
+    /// <summary>字段行内只用实心圆标识参与任一外键的字段，留白表示否。</summary>
+    public static string ForeignKeyMarker(DesignProject project, TableDesign table, ColumnDesign column)
+    {
+        _ = project;
+        return table.ForeignKeys.Any(key => SqlServerDdl.Names(key.Columns)
+            .Contains(column.Name, StringComparer.OrdinalIgnoreCase)) ? "●" : "";
+    }
+
+    /// <summary>索引作为表级结构单独排列在字段表下方。</summary>
+    public static IEnumerable<string> IndexNotes(TableDesign table)
+    {
+        foreach (var index in table.Indexes)
+        {
+            yield return $"{(index.IsConstraint ? "唯一约束" : index.Unique ? "唯一索引" : "普通索引")}：{index.Name}；{KeyColumns(index.Columns, index.DescendingColumns)}；{(index.Clustered ? "聚集" : "非聚集")}{(index.Include == "" ? "" : "；包含列：" + index.Include)}{(index.Filter == "" ? "" : "；筛选条件：" + index.Filter)}。";
+        }
+    }
+
+    /// <summary>未进入字段行或索引区的检查约束。</summary>
+    public static IEnumerable<string> OtherNotes(TableDesign table)
+    {
+        foreach (var check in table.Checks)
+        {
+            yield return $"检查约束：{check.Name}；{check.Expression}";
+        }
+    }
 
     /// <summary>表下集中列明主键、索引、外键、检查约束及特殊字段属性，不丢弃列顺序或引用动作。</summary>
     public static IEnumerable<string> Notes(DesignProject project, TableDesign table)

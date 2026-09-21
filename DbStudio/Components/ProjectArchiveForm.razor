@@ -3,7 +3,7 @@
 
 <form @onsubmit="DownloadAsync" @onsubmit:preventDefault>
     <p class="muted">@Project.Name · @Project.Tables.Count 张表 · @Project.Tables.Sum(t => t.Columns.Count) 个字段 · 已保存修订 r@(Project.Revision)</p>
-    <p class="muted">正式首页和归档尾页，中间连续排列紧凑表结构。可空字段留白，主键、索引和外键在表下说明。</p>
+    <p class="muted">全文采用 A4 横版。中文名紧跟字段名，主键和外键以实心圆标识，索引独立排列在字段表下方。</p>
     @if (HasUnsavedChanges)
     {
         <p class="settings-notice" role="status">当前有未保存修改，本次 PDF 仅包含已保存内容。要包含修改，请先关闭窗口并保存设计。</p>
@@ -20,7 +20,7 @@
             <label>编制人<input @bind="options.PreparedBy" maxlength="50" /></label>
         </div>
     </fieldset>
-    <p class="muted">导出范围为当前项目全部已保存表，不受搜索过滤影响；不连接实际数据库。审核及签字栏留待核验后填写。</p>
+    <p class="muted">导出范围为当前项目全部已保存表，不受搜索过滤影响；不连接实际数据库，也不包含审批或签字页。</p>
     @if (failure != "")
     {
         <p class="settings-error" role="alert">@failure</p>

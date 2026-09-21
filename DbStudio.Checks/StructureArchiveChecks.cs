@@ -7,12 +7,26 @@ internal static class StructureArchiveChecks
 {
     internal static async Task RunAsync(StudioStore store, ClaimsPrincipal admin, ClaimsPrincipal outsider, string outputPath, Action<string, bool> check)
     {
-        var project = store.NewProject(admin, "数据库归档检查", "用于核验正式首页、紧凑表结构与正式审批尾页。");
+        var project = store.NewProject(admin, "数据库归档检查", "用于核验正式首页、可见目录与紧凑表结构正文。");
+        var department = new TableDesign
+        {
+            Name = "Department",
+            Label = "部门",
+            Module = "人事",
+            DataCategory = TableDataCategories.Master,
+            Columns =
+            [
+                new() { Name = "Id", Label = "部门标识", Type = "int", Nullable = false, PrimaryKeyOrder = 1 },
+                new() { Name = "Name", Label = "部门名称", Type = "nvarchar", Length = "80", Nullable = false }
+            ]
+        };
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, department);
         var table = new TableDesign
         {
             Name = "Employee",
             Label = "员工档案",
             Module = "人事",
+            DataCategory = TableDataCategories.Master,
             Comment = "记录员工信息；中文备注、英文标识符与空值需要完整保留。",
             PrimaryKeyName = "PK_Employee_Custom",
             PrimaryKeyClustered = false,
@@ -21,20 +35,22 @@ internal static class StructureArchiveChecks
             [
                 new() { Name = "Id", Label = "员工标识", Type = "bigint", Nullable = false, PrimaryKeyOrder = 1, Identity = true, IdentitySeed = 10, IdentityIncrement = 2 },
                 new() { Name = "Code", Label = "员工编号", Type = "nvarchar", Length = "80", Nullable = false, Collation = "Latin1_General_100_CI_AS", InputLimit = "20" },
+                new() { Name = "DepartmentId", Label = "所属部门", Type = "int", Nullable = true },
                 new() { Name = "Remark", Label = "备注", Type = "nvarchar", Length = "max", Default = "NULL", DefaultConstraintName = "DF_Employee_Remark", Comment = "选填信息；未录入时为空。" },
                 new() { Name = "Amount", Label = "金额", Type = "decimal", Precision = 19, Scale = 4, Default = "0" },
                 new() { Name = "CreatedAt", Label = "创建时间", Type = "datetime2", TemporalScale = 3, Nullable = false, Default = "sysdatetime()" },
                 new() { Name = "ComputedId", Label = "派生标识", Computed = "[Id] * 2", Persisted = true }
             ],
+            ForeignKeys = [new() { Name = "FK_Employee_Department", Columns = "DepartmentId", TargetTableId = department.Id, TargetColumns = "Id", OnDelete = "SET NULL" }],
             Indexes = [new() { Name = "IX_Employee_Code", Columns = "Code,Id", DescendingColumns = "Code", Include = "Amount", Filter = "[Amount] > 0", Unique = true }],
             Checks = [new() { Name = "CK_Employee_Amount", Expression = "[Amount] >= 0" }]
         };
-        project = store.SaveTable(admin, project.Id, project.Revision, table);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, table);
         var options = new StructureArchiveOptions { DocumentNumber = "DB-ARCH-TEST-001", PreparedBy = "测试编制人", Department = "信息技术部", DatabaseName = "ArchiveTest", DatabaseVersion = "2022", Environment = "验证环境" };
         var snapshot = store.ReadStructureArchive(admin, project.Id, project.Revision, options);
         table.Columns[1].Comment = "尚未保存的内容";
         options.PreparedBy = "后续修改";
-        check("Archive uses isolated saved snapshot and copied metadata", snapshot.Project.Tables[0].Columns[1].Comment == "" && snapshot.Options.PreparedBy == "测试编制人");
+        check("Archive uses isolated saved snapshot and copied metadata", snapshot.Project.Tables.Single(item => item.Name == "Employee").Columns[1].Comment == "" && snapshot.Options.PreparedBy == "测试编制人");
         var denied = false;
         try
         {
@@ -92,9 +108,10 @@ internal static class StructureArchiveChecks
         }
         catch (InvalidOperationException) { invalidMetadata = true; }
         check("Archive validates metadata on server", invalidMetadata);
-        check("Nullable cells are blank and computed fields are not guessed", StructureArchiveText.Nullability(table.Columns[2]) == "" && StructureArchiveText.Nullability(table.Columns[0]) == "不可空" && StructureArchiveText.DataType(table.Columns[5]) == "计算列");
-        check("Archive preserves type parameters and default distinction", StructureArchiveText.DataType(table.Columns[3]) == "decimal(19,4)" && StructureArchiveText.DataType(table.Columns[4]) == "datetime2(3)" && StructureArchiveText.Generation(table.Columns[2]) == "NULL" && StructureArchiveText.Generation(table.Columns[1]) == "无");
-        check("Archive preserves identity and persisted expression", StructureArchiveText.Generation(table.Columns[0]).Contains("起始 10，步长 2") && StructureArchiveText.Generation(table.Columns[5]).Contains("持久化计算：[Id] * 2"));
+        check("Nullable cells are blank and computed fields are not guessed", StructureArchiveText.Nullability(table.Columns[3]) == "" && StructureArchiveText.Nullability(table.Columns[0]) == "不可空" && StructureArchiveText.DataType(table.Columns[6]) == "计算列");
+        check("Archive preserves type parameters and default distinction", StructureArchiveText.DataType(table.Columns[4]) == "decimal(19,4)" && StructureArchiveText.DataType(table.Columns[5]) == "datetime2(3)" && StructureArchiveText.Generation(table.Columns[3]) == "NULL" && StructureArchiveText.Generation(table.Columns[1]) == "无");
+        check("Archive pairs physical and Chinese table names", StructureArchiveText.TableTitle(table) == "dbo.Employee  |  员工档案" && TableDataCategories.Get(table.DataCategory).Name == "基础数据");
+        check("Archive preserves identity and persisted expression", StructureArchiveText.Generation(table.Columns[0]).Contains("起始 10，步长 2") && StructureArchiveText.Generation(table.Columns[6]).Contains("持久化计算：[Id] * 2"));
         var notes = string.Join('\n', StructureArchiveText.Notes(project, table));
         check("Archive preserves named keys, direction, includes and filter", notes.Contains("PK_Employee_Custom") && notes.Contains("Id 降序") && notes.Contains("Code 降序，Id 升序") && notes.Contains("包含列：Amount") && notes.Contains("筛选条件：[Amount] > 0") && notes.Contains("Latin1_General_100_CI_AS") && notes.Contains("DF_Employee_Remark"));
         var related = ModelJson.Clone(table);
@@ -109,6 +126,19 @@ internal static class StructureArchiveChecks
         });
         notes = string.Join('\n', StructureArchiveText.Notes(project, related));
         check("Archive resolves FK targets and describes both actions", notes.Contains("dbo.Employee (Id)") && notes.Contains("级联（CASCADE）") && notes.Contains("设为默认值（SET DEFAULT）"));
+        check("Archive uses a compact filled-circle primary key marker", StructureArchiveText.PrimaryKeyMarker(table, table.Columns[0]) == "●"
+            && StructureArchiveText.PrimaryKeyMarker(table, table.Columns[1]) == "");
+        var foreignMarker = StructureArchiveText.ForeignKeyMarker(project, related, related.Columns[0]);
+        check("Archive uses a compact filled-circle foreign key marker", foreignMarker == "●"
+            && StructureArchiveText.ForeignKeyMarker(project, related, related.Columns[1]) == "");
+        check("Archive keeps indexes in a dedicated table-level section", StructureArchiveText.IndexNotes(table).Single().Contains("IX_Employee_Code")
+            && StructureArchiveText.OtherNotes(table).All(note => !note.Contains("IX_Employee_Code")));
+        var actualForeignMarker = StructureArchiveText.ForeignKeyMarker(project, table, table.Columns[2]);
+        check("Archive marks a real cross-table foreign key without verbose detail", actualForeignMarker == "●");
+        var savedEmployee = snapshot.Project.Tables.Single(item => item.Name == "Employee");
+        check("Archive separates Chinese name from the final description column", savedEmployee.Columns[1].Label == "员工编号"
+            && StructureArchiveText.Description(savedEmployee.Columns[1]) == "输入位数：20"
+            && StructureArchiveText.Description(savedEmployee.Columns[3]).Contains("备注：选填信息"));
 
         var pdf = new StructureArchivePdf();
         var auditBefore = store.Audit(admin, project.Id).Count;
@@ -117,7 +147,8 @@ internal static class StructureArchiveChecks
         File.WriteAllBytes(samplePath, sample);
         using (var doc = PdfReader.Open(new MemoryStream(sample), PdfDocumentOpenMode.Import))
         {
-            check("Small archive contains separate cover, compact body and approval pages", doc.PageCount == 3 && doc.Pages.Cast<PdfSharp.Pdf.PdfPage>().All(p => Math.Abs(p.Width.Point - 595) < 1));
+            check("Small archive keeps the landscape cover on one page and has no approval pages", doc.PageCount == 3
+                && doc.Pages.Cast<PdfSharp.Pdf.PdfPage>().All(p => Math.Abs(p.Width.Point - 842) < 2 && Math.Abs(p.Height.Point - 595) < 2));
         }
         check("Archive does not write project or audit", store.Projects(admin).Single(p => p.Id == project.Id).Revision == project.Revision && store.Audit(admin, project.Id).Count == auditBefore);
 
@@ -143,18 +174,18 @@ internal static class StructureArchiveChecks
         var largeBytes = await pdf.GenerateAsync(largeSnapshot);
         using (var doc = PdfReader.Open(new MemoryStream(largeBytes), PdfDocumentOpenMode.Import))
         {
-            check("100 tables remain compact with embedded Chinese text", doc.PageCount is > 20 and < 70 && largeBytes.Length < 5_000_000);
             Console.WriteLine($"ARCHIVE: 100 tables / 1000 fields = {doc.PageCount} pages, {largeBytes.Length} bytes");
+            check("100 tables remain compact with embedded Chinese text", doc.PageCount is > 20 and < 80 && largeBytes.Length < 5_000_000);
         }
         File.WriteAllBytes(Path.Combine(outputPath, "structure-archive-100-tables.pdf"), largeBytes);
         check("Archive respects module order without changing project", StructureArchiveText.Tables(large).Take(50).All(t => t.Module == "基础资料") && large.Tables[1].Name == "ArchiveTable001");
 
         var longProject = ModelJson.Clone(project);
         longProject.Name = "长字段备注与长表续页验证";
-        longProject.Tables[0].Columns[2].Comment = string.Concat(Enumerable.Repeat("长备注需完整换行；支持连续中文和_very_long_identifier_without_spaces。", 300)) + "长备注结束标识";
+        longProject.Tables.Single(item => item.Name == "Employee").Columns[3].Comment = string.Concat(Enumerable.Repeat("长备注需完整换行；支持连续中文和_very_long_identifier_without_spaces。", 300)) + "长备注结束标识";
         for (var i = 0; i < 80; i++)
         {
-            longProject.Tables[0].Columns.Add(new()
+            longProject.Tables.Single(item => item.Name == "Employee").Columns.Add(new()
             {
                 Name = $"Continuation{i:000}",
                 Label = $"续页字段 {i:000}"
@@ -163,7 +194,8 @@ internal static class StructureArchiveChecks
         var longBytes = await pdf.GenerateAsync(new(longProject, snapshot.Options, snapshot.ExportedAt));
         using (var doc = PdfReader.Open(new MemoryStream(longBytes), PdfDocumentOpenMode.Import))
         {
-            check("Oversized field text uses full width and long tables paginate", doc.PageCount is > 3 and < 12);
+            Console.WriteLine($"ARCHIVE LONG TEXT: {doc.PageCount} pages, {longBytes.Length} bytes");
+            check("Oversized field text uses full width and long tables paginate", doc.PageCount is > 3 and < 24);
         }
         File.WriteAllBytes(Path.Combine(outputPath, "structure-archive-long-text.pdf"), longBytes);
         using var cancelled = new CancellationTokenSource();
