@@ -31,6 +31,11 @@ public class TableDesign
     public string Module { get; set; } = "未分组";
 
     /// <summary>
+    /// 表中数据的业务用途；用于归档展示和按类别生成数据清理计划。
+    /// </summary>
+    public string DataCategory { get; set; } = TableDataCategories.Unclassified;
+
+    /// <summary>
     /// 表设计补充说明，仅保存在 Studio，不写入数据库 MS_Description。
     /// </summary>
     public string Comment { get; set; } = "";

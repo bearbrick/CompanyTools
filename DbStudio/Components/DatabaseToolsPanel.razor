@@ -36,6 +36,15 @@
             <article><span class="eyebrow">DATABASE → DESIGN</span><h2>从数据库反推设计</h2><p>读取表、字段、索引、外键和检查约束。预览后合并到当前项目。</p><button disabled="@(connectionId == "")" @onclick="Reverse">读取结构并预览</button></article>
             }
             <article><span class="eyebrow">DESIGN → DATABASE</span><h2>结构比对与同步</h2><p>按已保存设计生成差异和 SQL 脚本，核对后再执行。</p><label class="check-label"><input type="checkbox" @bind="prune" @bind:after="InvalidatePlan" /> @(SingleTable ? "删除当前表中设计未定义的列、索引和约束" : "删除数据库中设计未定义的表、列和约束")</label><label class="check-label"><input type="checkbox" @bind="allowDataLoss" @bind:after="InvalidatePlan" /> 允许可能丢失数据的变更</label><button class="primary" disabled="@(connectionId == "")" @onclick="Compare">@(SingleTable ? "比对当前表" : "开始比对")</button></article>
+            <article><span class="eyebrow">DATA CLEANUP</span><h2>@(SingleTable ? "清空当前表数据" : "按分类清空数据")</h2>
+                @if (!SingleTable)
+                {
+                    <label>数据分类<StudioSelect Label="待清空的数据分类" Value="@cleanupCategory" ValueChanged="SelectCleanupCategory" Items="CleanupCategoryOptions" /></label>
+                }
+                <p>@(SingleTable ? $"生成 {ScopeTable?.Schema}.{ScopeTable?.Name} 的 TRUNCATE 清空 SQL。" : $"当前分类包含 {CleanupScopeTables.Count} 张表；会在实际库检查外键后生成 TRUNCATE 脚本。")</p>
+                @if (SelectedCleanupCategory?.Caution == true) { <p class="cleanup-caution">此分类通常包含重要或尚未确认的数据，请逐表核对。</p> }
+                <button disabled="@(connectionId == "" || CleanupScopeTables.Count == 0)" @onclick="PlanCleanup">生成清空计划</button>
+            </article>
         </div>
         @if (snapshot != null)
         {
@@ -60,6 +69,15 @@
                 }
             </section>
         }
+        @if (cleanupPlan != null)
+        {
+            <section class="tools-result cleanup-result"><div class="section-title"><div><h2>TRUNCATE 数据清空计划 <span>@cleanupPlan.Tables.Count</span></h2><p class="muted">目标 @Selected?.Server / @cleanupPlan.Database · 设计 r@(cleanupPlan.ProjectRevision) · 计划有效至 @cleanupPlan.ExpiresAt.ToLocalTime().ToString("HH:mm")</p></div><button @onclick="DownloadCleanupPlan">下载 TRUNCATE SQL</button></div>
+                <p class="settings-error">清空不可恢复。TRUNCATE 是最小日志操作，并非绝对零日志；脚本绝不退回 DELETE。执行前会再次检查目标库、表和外键，请先备份业务数据。</p>
+                <div class="tools-table-scroll"><table class="list-table"><thead><tr><th>数据分类</th><th>中文名</th><th>物理表名</th><th>自增复位</th></tr></thead><tbody>@foreach (var item in cleanupPlan.Tables) { <tr><td>@item.Category</td><td>@(string.IsNullOrWhiteSpace(item.Label) ? "（未填写）" : item.Label)</td><td class="mono">@item.Schema.@item.Name</td><td>@(item.ResetsIdentity ? "是" : "—")</td></tr> }</tbody></table></div>
+                <details class="plan-script" open><summary>查看完整清空脚本</summary><pre>@cleanupPlan.Script</pre></details>
+                <div class="execute-panel cleanup-execute"><h3>执行 TRUNCATE 清空</h3><p>将以最小日志方式永久清空以上 <b>@cleanupPlan.Tables.Count</b> 张表，并自动复位自增列。范围内跨表外键会在同一事务内原样重建，其他结构不变。</p><label class="check-label"><input type="checkbox" @bind="cleanupReviewed" /> 我已逐表核对清空范围，并已完成必要备份</label><label>输入目标数据库名称确认<input @bind="cleanupConfirmedDatabase" @bind:event="oninput" placeholder="@cleanupPlan.Database" /></label><button class="primary danger" disabled="@(!cleanupReviewed || cleanupConfirmedDatabase != cleanupPlan.Database)" @onclick="ExecuteCleanup">确认执行 TRUNCATE</button></div>
+            </section>
+        }
     </fieldset>
 </section>
 
@@ -70,24 +88,34 @@
     [Parameter] public EventCallback<bool> BusyChanged { get; set; }
     private List<DatabaseConnection> connections = [];
     private string connectionId = "", password = "", authentication = "windows", problem = "", notice = "", progress = "", confirmedDatabase = "";
-    private bool busy, manage, design, prune, allowDataLoss, reviewed;
+    private string cleanupCategory = TableDataCategories.Business, cleanupConfirmedDatabase = "";
+    private bool busy, manage, design, prune, allowDataLoss, reviewed, cleanupReviewed;
     private DatabaseConnection? edit;
     private DatabaseConnection? deleting;
     private DatabaseSnapshot? snapshot;
     private int snapshotRevision;
     private ReversePreview? reversePreview;
     private DatabasePlan? plan;
+    private DataCleanupPlan? cleanupPlan;
     private CancellationTokenSource? operation;
     private DatabaseConnection? Selected => connections.FirstOrDefault(c => c.Id == connectionId);
     private List<SelectOption> ConnectionOptions => connections.Select(c => new SelectOption(c.Id, c.Name, c.Server + " / " + c.Database)).ToList();
     private static readonly List<SelectOption> AuthenticationOptions = [new("windows", "Windows 集成认证"), new("sql", "SQL Server 账号密码")];
+    private static readonly List<SelectOption> CleanupCategoryOptions = TableDataCategories.All
+        .Select(item => new SelectOption(item.Id, item.Name, item.Description)).ToList();
+    private TableDataCategory? SelectedCleanupCategory => SingleTable ? TableDataCategories.Get(ScopeTable?.DataCategory) : TableDataCategories.Get(cleanupCategory);
+    private List<TableDesign> CleanupScopeTables => SingleTable
+        ? ScopeTable == null ? [] : [ScopeTable]
+        : Project.Tables.Where(table => TableDataCategories.Normalize(table.DataCategory) == cleanupCategory).ToList();
 
     protected override void OnInitialized()
     {
         Handle(() => { connections = Store.Connections(Principal, Project.Id); connectionId = connections.FirstOrDefault()?.Id ?? ""; var access = Store.AccessTo(Principal, Project.Id); manage = access.HasFlag(ProjectAccess.Manage); design = access.HasFlag(ProjectAccess.Design); });
     }
-    private void SelectConnection(string value) { connectionId = value; snapshot = null; edit = deleting = null; password = ""; InvalidatePlan(); notice = problem = ""; }
+    private void SelectConnection(string value) { connectionId = value; snapshot = null; edit = deleting = null; password = ""; InvalidatePlan(); InvalidateCleanupPlan(); notice = problem = ""; }
     private void InvalidatePlan() { plan = null; reviewed = false; confirmedDatabase = ""; }
+    private void InvalidateCleanupPlan() { cleanupPlan = null; cleanupReviewed = false; cleanupConfirmedDatabase = ""; }
+    private void SelectCleanupCategory(string value) { cleanupCategory = TableDataCategories.Normalize(value); InvalidateCleanupPlan(); }
     private void NewConnection() { deleting = null; edit = new() { ProjectId = Project.Id }; password = ""; authentication = "windows"; }
     private void EditConnection() { deleting = null; edit = ModelJson.Clone(Selected); password = ""; authentication = edit?.IntegratedSecurity == true ? "windows" : "sql"; }
     /// <summary>刷新会清理依赖旧连接的预览和草稿，保留仍存在的选中项。</summary>
@@ -112,6 +140,13 @@
     private Task Test() => Perform("正在测试连接…", async token => notice = "连接成功：" + await Tools.TestAsync(Principal, Project.Id, connectionId, token));
     private Task Reverse() => Perform("正在读取数据库结构…", async token => { snapshot = null; InvalidatePlan(); snapshotRevision = Project.Revision; snapshot = await Tools.ReverseAsync(Principal, Project.Id, connectionId, token); reversePreview = DatabaseMerge.Preview(Project, snapshot); });
     private Task Compare() => Perform("正在比对结构并生成脚本…", async token => { snapshot = null; InvalidatePlan(); plan = await CompareScopeAsync(token); });
+    private Task PlanCleanup() => Perform("正在核对数据表和外键并生成清空计划…", async token =>
+    {
+        snapshot = null;
+        InvalidatePlan();
+        InvalidateCleanupPlan();
+        cleanupPlan = await Tools.PlanCleanupAsync(Principal, Project.Id, connectionId, CleanupScopeTables.Select(table => table.Id).ToList(), token);
+    });
     private async Task ApplySnapshot(List<string> selectedIds)
     {
         DesignProject? updated = null;
@@ -125,6 +160,17 @@
         finally { InvalidatePlan(); }
     });
     private Task DownloadPlan() => JS.InvokeVoidAsync("studio.download", $"{plan!.Database}-sync.sql", plan.Script, "text/plain;charset=utf-8").AsTask();
+    private Task DownloadCleanupPlan() => JS.InvokeVoidAsync("studio.download", $"{cleanupPlan!.Database}-data-cleanup.sql", cleanupPlan.Script, "text/plain;charset=utf-8").AsTask();
+    private Task ExecuteCleanup() => Perform("正在事务中清空数据，请等待数据库返回结果…", async token =>
+    {
+        var current = cleanupPlan!;
+        try
+        {
+            await Tools.ExecuteCleanupAsync(Principal, Project.Id, current.Id, cleanupConfirmedDatabase, token);
+            notice = $"TRUNCATE 清空成功：{current.Tables.Count} 张表。";
+        }
+        finally { InvalidateCleanupPlan(); }
+    });
     private static string OperationName(string value) => value switch { "Create" => "新增", "Alter" => "修改", "Drop" => "删除", _ => value };
 
     /// <summary>耗时操作可取消并锁定当前工具上下文，避免切换项目后误用旧计划。</summary>

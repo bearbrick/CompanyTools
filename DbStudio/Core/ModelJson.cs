@@ -28,18 +28,22 @@ public static class ModelJson
     /// </summary>
     public static DesignProject NormalizeImport(DesignProject project)
     {
-        foreach (var c in project.Tables.SelectMany(t => t.Columns))
+        foreach (var table in project.Tables)
         {
-            var match = System.Text.RegularExpressions.Regex.Match(c.Type, @"^(decimal|numeric)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (match.Success)
+            table.DataCategory = TableDataCategories.Normalize(table.DataCategory);
+            foreach (var c in table.Columns)
             {
-                c.Type = match.Groups[1].Value.ToLowerInvariant();
-                c.Precision = int.Parse(match.Groups[2].Value);
-                c.Scale = int.Parse(match.Groups[3].Value);
-            }
-            if (c.Length == "-1" && c.Type is "nvarchar" or "varchar" or "varbinary")
-            {
-                c.Length = "max";
+                var match = System.Text.RegularExpressions.Regex.Match(c.Type, @"^(decimal|numeric)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (match.Success)
+                {
+                    c.Type = match.Groups[1].Value.ToLowerInvariant();
+                    c.Precision = int.Parse(match.Groups[2].Value);
+                    c.Scale = int.Parse(match.Groups[3].Value);
+                }
+                if (c.Length == "-1" && c.Type is "nvarchar" or "varchar" or "varbinary")
+                {
+                    c.Length = "max";
+                }
             }
         }
         return project;

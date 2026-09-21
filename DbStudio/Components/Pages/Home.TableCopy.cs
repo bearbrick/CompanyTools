@@ -28,6 +28,7 @@ public partial class Home
                 Schema = suggested.Schema,
                 Label = suggested.Label,
                 Module = suggested.Module,
+                DataCategory = suggested.DataCategory,
                 Comment = suggested.Comment
             };
             tableCopyError = "";

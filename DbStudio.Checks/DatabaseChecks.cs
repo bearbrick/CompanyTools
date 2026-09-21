@@ -24,6 +24,7 @@ internal static class DatabaseChecks
         {
             Name = "Category",
             Label = "分类",
+            DataCategory = TableDataCategories.Master,
             PrimaryKeyName = "PK_Category_Custom",
             PrimaryKeyClustered = false,
             Columns = [new() { Name = "Id", Type = "int", Label = "分类编号", Nullable = false, PrimaryKeyOrder = 1 }, new() { Name = "Name", Type = "nvarchar", Label = "分类名称", Length = "40", Nullable = false }],
@@ -33,6 +34,7 @@ internal static class DatabaseChecks
         {
             Name = "Product",
             Label = "产品",
+            DataCategory = TableDataCategories.Business,
             Columns = [new() { Name = "Id", Type = "bigint", Nullable = false, PrimaryKeyOrder = 1, Identity = true },
             new() { Name = "CategoryId", Type = "int", Nullable = true }, new() { Name = "Price", Type = "decimal", Precision = 12, Scale = 2, Nullable = false, Default = "0" },
             new() { Name = "CreatedAt", Type = "datetime2", TemporalScale = 3, Default = "sysdatetime()", Nullable = false }],
@@ -40,14 +42,14 @@ internal static class DatabaseChecks
             Checks = [new() { Name = "CK_Product_Price", Expression = "[Price]>=0" }],
             Indexes = [new() { Name = "IX_Product_Category", Columns = "CategoryId", Include = "Price", Filter = "[CategoryId] IS NOT NULL" }]
         };
-        project = store.SaveTable(admin, project.Id, project.Revision, category);
-        project = store.SaveTable(admin, project.Id, project.Revision, product);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, category);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, product);
         check("SQL Server design package builds", SqlServerTools.BuildPackage(project).Length > 0);
         var plan = await tools.CompareAsync(admin, project.Id, profile.Id);
         check("SQL Server initial diff has create operations", plan.Changes.Any(c => c.Name.Contains("Product")) && plan.Script.Contains("CREATE TABLE"));
         check("SQL Server compare does not write target", (await tools.ReverseAsync(admin, project.Id, profile.Id)).Project.Tables.Count == 0);
         await RejectAsync("SQL Server requires exact database confirmation", () => tools.ExecuteAsync(admin, project.Id, plan.Id, "wrong"), check);
-        project = store.SaveTable(admin, project.Id, project.Revision, product);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, product);
         check("Unchanged save preserves SQL Server preview plan revision", project.Revision == plan.ProjectRevision);
         await tools.ExecuteAsync(admin, project.Id, plan.Id, database);
         var snapshot = await tools.ReverseAsync(admin, project.Id, profile.Id);
@@ -76,7 +78,7 @@ internal static class DatabaseChecks
             Nullable = false,
             Default = "1"
         });
-        project = store.SaveTable(admin, project.Id, project.Revision, product);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, product);
         var update = await tools.CompareAsync(admin, project.Id, profile.Id);
         check("SQL Server incremental diff adds column", update.Script.Contains("Quantity"));
         await tools.ExecuteAsync(admin, project.Id, update.Id, database);
@@ -135,6 +137,41 @@ internal static class DatabaseChecks
             using var verify = target.CreateCommand();
             verify.CommandText = "SELECT CASE WHEN OBJECT_ID('dbo.ExtraTable') IS NULL AND OBJECT_ID('dbo.KeepView') IS NOT NULL THEN 1 ELSE 0 END";
             check("SQL Server explicit prune drops extra table and preserves view", Convert.ToInt32(await verify.ExecuteScalarAsync()) == 1);
+        }
+        await RejectAsync("Cleanup blocks a parent table referenced outside the selected scope",
+            () => tools.PlanCleanupAsync(admin, project.Id, profile.Id, [category.Id]), check);
+        var productCleanup = await tools.PlanCleanupAsync(admin, project.Id, profile.Id, [product.Id]);
+        check("Single-table cleanup plan contains guarded SQL and Chinese metadata", productCleanup.Tables.Count == 1
+            && productCleanup.Script.Contains("IF DB_ID()") && productCleanup.Script.Contains("产品")
+            && productCleanup.Script.Contains("TRUNCATE TABLE [dbo].[Product]")
+            && !productCleanup.Script.Contains("DELETE FROM") && productCleanup.Script.Contains("BEGIN TRANSACTION"));
+        await RejectAsync("Cleanup requires exact database confirmation",
+            () => tools.ExecuteCleanupAsync(admin, project.Id, productCleanup.Id, "wrong"), check);
+        await tools.ExecuteCleanupAsync(admin, project.Id, productCleanup.Id, database);
+        using (var target = new SqlConnection(targetConnection))
+        {
+            await target.OpenAsync();
+            using var verify = target.CreateCommand();
+            verify.CommandText = "SELECT (SELECT COUNT(*) FROM dbo.Category) * 10 + (SELECT COUNT(*) FROM dbo.Product)";
+            check("Single-table cleanup preserves the unselected parent", Convert.ToInt32(await verify.ExecuteScalarAsync()) == 10);
+            verify.CommandText = "INSERT dbo.Product(CategoryId,Price) OUTPUT inserted.Id VALUES(1,9.5)";
+            check("Cleanup resets identity to its original seed", Convert.ToInt64(await verify.ExecuteScalarAsync()) == 1);
+        }
+        var groupedCleanup = await tools.PlanCleanupAsync(admin, project.Id, profile.Id, [category.Id, product.Id]);
+        check("Grouped cleanup rebuilds internal FK around TRUNCATE", groupedCleanup.Script.Contains("DROP CONSTRAINT [FK_Product_Category]")
+            && groupedCleanup.Script.Contains("ADD CONSTRAINT [FK_Product_Category]")
+            && groupedCleanup.Script.Contains("ON DELETE SET NULL") && !groupedCleanup.Script.Contains("DELETE FROM"));
+        await tools.ExecuteCleanupAsync(admin, project.Id, groupedCleanup.Id, database);
+        using (var target = new SqlConnection(targetConnection))
+        {
+            await target.OpenAsync();
+            using var verify = target.CreateCommand();
+            verify.CommandText = "SELECT (SELECT COUNT(*) FROM dbo.Category) + (SELECT COUNT(*) FROM dbo.Product)";
+            check("Grouped cleanup empties all selected tables transactionally", Convert.ToInt32(await verify.ExecuteScalarAsync()) == 0);
+            verify.CommandText = "SELECT CASE WHEN is_disabled=0 AND is_not_trusted=0 AND delete_referential_action_desc='SET_NULL' THEN 1 ELSE 0 END FROM sys.foreign_keys WHERE name='FK_Product_Category'";
+            check("Grouped cleanup restores FK definition and trust state", Convert.ToInt32(await verify.ExecuteScalarAsync()) == 1);
+            verify.CommandText = "INSERT dbo.Category VALUES(1,N'测试分类'); INSERT dbo.Product(CategoryId,Price) VALUES(1,12.50);";
+            await verify.ExecuteNonQueryAsync();
         }
         var deletedConnectionPlan = await tools.CompareAsync(admin, project.Id, profile.Id);
         store.DeleteConnection(admin, project.Id, profile.Id, profile.Revision);

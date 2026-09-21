@@ -11,6 +11,7 @@
         <label>定义名<input aria-label="新表定义名" @bind="Options.Label" @bind:event="oninput" /></label>
         <label>架构<input class="mono" aria-label="新表架构" @bind="Options.Schema" @bind:event="oninput" maxlength="128" required /></label>
         <label>所属模块<StudioSelect Label="新表所属模块" @bind-Value="Options.Module" Items="Modules" AllowCustom="true" SearchPlaceholder="选择模块或输入新模块…" /></label>
+        <label>数据分类<StudioSelect Label="新表数据分类" @bind-Value="Options.DataCategory" Items="Categories" /></label>
         <label class="wide">备注<textarea aria-label="新表备注" @bind="Options.Comment" @bind:event="oninput" rows="3"></textarea></label>
     </div>
     @if (Error != "")

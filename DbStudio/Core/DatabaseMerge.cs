@@ -39,6 +39,7 @@ public static class DatabaseMerge
             if (old != null)
             {
                 table.Module = old.Module;
+                table.DataCategory = old.DataCategory;
                 table.Label = old.Label;
                 table.Comment = old.Comment;
                 foreach (var c in table.Columns)

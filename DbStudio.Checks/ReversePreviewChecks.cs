@@ -5,7 +5,7 @@ internal static class ReversePreviewChecks
 {
     internal static void Run(Action<string, bool> check)
     {
-        var existing = new TableDesign { Name = "Existing", Label = "业务定义", Comment = "设计备注", Module = "业务模块", Columns = [new() { Name = "Id", Type = "int", Default = "0", InputLimit = "10" }, new() { Name = "At", Type = "datetime2" }] };
+        var existing = new TableDesign { Name = "Existing", Label = "业务定义", Comment = "设计备注", Module = "业务模块", DataCategory = TableDataCategories.System, Columns = [new() { Name = "Id", Type = "int", Default = "0", InputLimit = "10" }, new() { Name = "At", Type = "datetime2" }] };
         var localOnly = new TableDesign { Name = "DesignOnly", Columns = [new() { Name = "Id", Type = "int" }] };
         var project = new DesignProject { Tables = [existing, localOnly] };
         var actual = ModelJson.Clone(existing);
@@ -36,7 +36,7 @@ internal static class ReversePreviewChecks
         check("Reverse details identify exact default column and index changes", row.Differences.Any(d => d.Object == "Id" && d.Property == "默认值" && d.Before == "0" && d.After == "1") && row.Differences.Any(d => d.Object == "Code" && d.Property == "新增字段") && row.Differences.Any(d => d.Object == "IX_Code" && d.Property == "新增索引"));
         var merged = DatabaseMerge.Apply(project, preview, ["db-1"]);
         var table = merged.Tables.Single(t => t.Id == existing.Id);
-        check("Selective merge preserves IDs and business metadata", merged.Tables.Count == 2 && table.Label == existing.Label && table.Comment == existing.Comment && table.Module == existing.Module && table.Columns[0].Id == existing.Columns[0].Id && table.Columns[0].InputLimit == "10");
+        check("Selective merge preserves IDs and business metadata", merged.Tables.Count == 2 && table.Label == existing.Label && table.Comment == existing.Comment && table.Module == existing.Module && table.DataCategory == TableDataCategories.System && table.Columns[0].Id == existing.Columns[0].Id && table.Columns[0].InputLimit == "10");
         check("Merged tables become unchanged on next preview", DatabaseMerge.Preview(merged, snapshot).ChangedCount == 0);
         var invalidRejected = false;
         try { DatabaseMerge.Apply(project, preview, ["not-in-snapshot"]); } catch (InvalidOperationException) { invalidRejected = true; }

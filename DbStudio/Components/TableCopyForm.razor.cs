@@ -15,6 +15,9 @@ public partial class TableCopyForm
     /// <summary>当前项目的可选模块，允许输入新模块。</summary>
     [Parameter] public List<SelectOption> Modules { get; set; } = [];
 
+    /// <summary>数据用途标签目录。</summary>
+    [Parameter] public List<SelectOption> Categories { get; set; } = [];
+
     /// <summary>提示副本包含尚未写回原表的编辑。</summary>
     [Parameter] public bool HasUnsavedChanges { get; set; }
 

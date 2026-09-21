@@ -15,6 +15,9 @@ public sealed class TableCopyOptions
     /// <summary>左侧表清单中的所属模块。</summary>
     public string Module { get; set; } = "未分组";
 
+    /// <summary>副本沿用或重新选择的数据用途标签。</summary>
+    public string DataCategory { get; set; } = TableDataCategories.Unclassified;
+
     /// <summary>仅保留在 Studio 中的表级业务备注。</summary>
     public string Comment { get; set; } = "";
 }

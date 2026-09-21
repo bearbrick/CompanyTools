@@ -28,6 +28,10 @@ public partial class Home
     private List<SelectOption> ModuleOptions => project == null ? [] : ModuleOrdering.Names(project)
         .Select(name => new SelectOption(name, name)).ToList();
 
+    /// <summary>表数据分类在编辑、归档与清理工具中使用同一目录。</summary>
+    private static readonly List<SelectOption> DataCategoryOptions = TableDataCategories.All
+        .Select(item => new SelectOption(item.Id, item.Name, item.Description)).ToList();
+
     /// <summary>
     /// 外键本表字段建议；允许输入逗号分隔的复合字段列表。
     /// </summary>

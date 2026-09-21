@@ -31,6 +31,7 @@ public static class DesignEditing
             Schema = source.Schema,
             Label = source.Label + "（副本）",
             Module = source.Module,
+            DataCategory = source.DataCategory,
             Comment = source.Comment
         });
     }
@@ -47,6 +48,7 @@ public static class DesignEditing
         copy.Schema = options.Schema.Trim();
         copy.Label = options.Label.Trim();
         copy.Module = string.IsNullOrWhiteSpace(options.Module) ? "未分组" : options.Module.Trim();
+        copy.DataCategory = TableDataCategories.Normalize(options.DataCategory);
         copy.Comment = options.Comment;
         if (string.IsNullOrWhiteSpace(copy.Name) || string.IsNullOrWhiteSpace(copy.Schema)
             || copy.Name.Length > 128 || copy.Schema.Length > 128

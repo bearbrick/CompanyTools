@@ -4,3 +4,7 @@
 .table-comparison-scope code { color: #24538e; font-size: 12px; overflow-wrap: anywhere; }
 .table-comparison-scope > span:last-child { color: #7085a1; font-size: 12px; }
 .comparison-timings { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 12px; }
+.cleanup-caution { color: #9a5a12 !important; font-weight: 600; }
+.cleanup-result { border-color: #efd4cf; }
+.cleanup-execute { border-color: #efb9b0; background: #fff7f5; }
+.cleanup-execute button.danger { background: #b42318; border-color: #b42318; color: white; }
