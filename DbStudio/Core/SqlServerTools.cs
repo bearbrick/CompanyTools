@@ -23,7 +23,7 @@ public record DatabasePlan(string Id, string Database, int ProjectRevision, Date
 public sealed partial class SqlServerTools(StudioStore store)
 {
     private sealed record StoredPlan(DatabasePlan View, string ProjectId, string ConnectionId, int ConnectionRevision,
-        string UserId, byte[] Package, string TargetHash, byte[] TargetPackage);
+        string UserId, byte[] Package, string TargetHash, byte[] TargetPackage, IReadOnlyList<EmptyColumnDeletion.Column> EmptyColumns);
     private readonly ConcurrentDictionary<string, StoredPlan> plans = new();
     private readonly SemaphoreSlim executionGate = new(1, 1);
 
@@ -103,6 +103,14 @@ public sealed partial class SqlServerTools(StudioStore store)
                 var executionChanges = SchemaDeploymentBoundary.ReadChanges(executionReport);
                 SchemaDeploymentBoundary.Validate(executionPackage, current, plan.View.Scope, executionChanges);
                 SchemaDeploymentBoundary.ValidateApproved(plan.View.Changes, executionChanges);
+                if (plan.EmptyColumns.Count > 0)
+                {
+                    var deletions = EmptyColumnDeletion.Assess(executionPackage, current, plan.View.Database, plan.View.Prune, cancellationToken);
+                    if (!deletions.SequenceEqual(plan.EmptyColumns))
+                    {
+                        throw new InvalidOperationException("空列删除计划已变化，请重新比对。");
+                    }
+                }
                 if (store.DatabaseProject(principal, projectId).Revision != plan.View.ProjectRevision
                     || store.Credential(principal, projectId, plan.ConnectionId).Profile.Revision != plan.ConnectionRevision)
                 {
@@ -115,7 +123,11 @@ public sealed partial class SqlServerTools(StudioStore store)
                 store.LogDatabaseOperation(principal, projectId, "开始同步结构", $"{credential.Profile.Name} · 计划 {planId}");
                 try
                 {
-                    service.Deploy(source, credential.Profile.Database, true, options, cancellationToken);
+                    if (plan.EmptyColumns.Count > 0)
+                    {
+                        EmptyColumnDeletion.Execute(credential.ConnectionString, plan.EmptyColumns, cancellationToken);
+                    }
+                    else { service.Deploy(source, credential.Profile.Database, true, options, cancellationToken); }
                     store.LogDatabaseResult(actor.DisplayName, projectId, "同步结构成功", credential.Profile.Name);
                 }
                 catch

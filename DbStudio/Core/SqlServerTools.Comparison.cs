@@ -66,6 +66,29 @@ public sealed partial class SqlServerTools
                     () => { SchemaDeploymentBoundary.Validate(sourceBytes, targetBytes, scope, changes); return true; });
             }
             var warnings = DeploymentWarnings.Parse(xml);
+            var emptyColumns = new List<EmptyColumnDeletion.Column>();
+            var emptyColumnReasons = new List<string>();
+            if (!allowDataLoss && changes.Count > 0)
+            {
+                emptyColumns = measurement.Run("核验空列删除", () =>
+                {
+                    var candidates = EmptyColumnDeletion.Assess(sourceBytes, targetBytes, credential.Profile.Database, prune, cancellationToken, emptyColumnReasons);
+                    return candidates.Count > 0 && EmptyColumnDeletion.AreEmpty(credential.ConnectionString, candidates, cancellationToken, emptyColumnReasons) ? candidates : [];
+                });
+            }
+            if (emptyColumns.Count > 0)
+            {
+                warnings.RemoveAll(w => w.Code == "DataIssue");
+                warnings.Insert(0, new("EmptyColumnDeletion", "删除全空列，自动放行",
+                    "本次仅删除普通列，已查询确认全部为 NULL。执行时会在同一事务内锁定、重新检查并删除；如已写入数据则停止，不需要勾选允许数据丢失。",
+                    emptyColumns.Select(c => new DeploymentIssue("", c.DisplayName, [])).ToList(), ""));
+            }
+            if (emptyColumnReasons.Count > 0)
+            {
+                warnings.Insert(0, new("EmptyColumnDeletionBlocked", "空列删除未自动放行",
+                    "以下是本次核验的具体结果。当前计划继续保留数据丢失保护；不会仅因字段名是自动生成的就删除它。",
+                    emptyColumnReasons.Select(reason => new DeploymentIssue("", reason, [])).ToList(), ""));
+            }
             if (reductions.Count > 0)
             {
                 warnings.Insert(0, new("TypeCapacityReduction", "容量缩小，可能截断或丢失精度",
@@ -79,9 +102,9 @@ public sealed partial class SqlServerTools
                     expansions.Select(message => new DeploymentIssue("", message, [])).ToList(), ""));
             }
             var plan = new DatabasePlan(Guid.NewGuid().ToString("N"), credential.Profile.Database, project.Revision,
-                DateTimeOffset.UtcNow.AddMinutes(15), changes, warnings, result.DatabaseScript, prune, allowDataLoss, scope, measurement.Timings.ToArray());
+                DateTimeOffset.UtcNow.AddMinutes(15), changes, warnings, emptyColumns.Count > 0 ? EmptyColumnDeletion.Script(emptyColumns) : result.DatabaseScript, prune, allowDataLoss, scope, measurement.Timings.ToArray());
             store.RequireProject(principal, projectId, ProjectAccess.Database, Permission.Design);
-            plans[plan.Id] = new(plan, projectId, connectionId, credential.Profile.Revision, principal.UserId(), sourceBytes, ModelHash(targetBytes), targetBytes);
+            plans[plan.Id] = new(plan, projectId, connectionId, credential.Profile.Revision, principal.UserId(), sourceBytes, ModelHash(targetBytes), targetBytes, emptyColumns);
             store.LogDatabaseOperation(principal, projectId, "生成结构比对", $"{credential.Profile.Name} · {scope?.DisplayName ?? "整库"} · {changes.Count} 项差异");
             return plan;
         }, cancellationToken);
