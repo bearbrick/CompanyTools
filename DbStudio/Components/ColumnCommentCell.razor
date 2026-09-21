@@ -1,0 +1,16 @@
+<div class="column-comment">
+    <button class="comment-summary" aria-label="@("查看备注 " + Column.Name)" aria-describedby="@(Column.Comment.Length > 0 ? PreviewId : null)" @onclick="() => Open.InvokeAsync(Column)">
+        <span>@(Column.Comment.Length == 0 ? "—" : Column.Comment)</span>
+    </button>
+    <button class="comment-expand" aria-label="@("展开备注 " + Column.Name)" title="展开查看、编辑备注" @onclick="() => Open.InvokeAsync(Column)"><Icon Name="arrows-angle-expand" /></button>
+    @if (Column.Comment.Length > 0)
+    {
+        <div id="@PreviewId" class="comment-tooltip" role="tooltip" popover="manual">@Column.Comment</div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ColumnDesign Column { get; set; } = default!;
+    [Parameter] public EventCallback<ColumnDesign> Open { get; set; }
+    private string PreviewId => "comment-preview-" + Column.Id;
+}

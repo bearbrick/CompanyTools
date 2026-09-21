@@ -23,7 +23,7 @@ public partial class Home : IDisposable
     string search = "";
     string fieldSearch = "";
     string tab = "fields";
-    string view = "design";
+    string view = "overview";
     string menu = "";
     string modal = "";
     string message = "";
@@ -34,7 +34,6 @@ public partial class Home : IDisposable
     ColumnDesign? advanced;
     string projectName = "";
     string projectDescription = "";
-    string paste = "";
     string sql = "";
     string oldPassword = "";
     string newPassword = "";
@@ -92,17 +91,14 @@ public partial class Home : IDisposable
             return;
         }
         projects = Store.Projects(principal);
-        project = projects.FirstOrDefault();
+        project = projects.FirstOrDefault(p => p.Id == RequestedProjectId) ?? projects.FirstOrDefault();
         LoadProjectAccess();
+        LoadProjectActivity();
         if (project != null)
         {
-            table = ModelJson.Clone(project.Tables.FirstOrDefault(t => t.Name == "ERP_Sales_Customer") ?? project.Tables.FirstOrDefault());
             foreach (var group in project.Tables.Select(t => t.Module).Distinct())
             {
-                if (group != table?.Module)
-                {
-                    collapsed.Add(group);
-                }
+                collapsed.Add(group);
             }
         }
     }
@@ -119,6 +115,7 @@ public partial class Home : IDisposable
         }
         await JS.InvokeVoidAsync("studio.setDirty", dirty);
         await JS.InvokeVoidAsync("studio.syncModal");
+        await FocusPendingColumnAsync();
     }
 
     /// <summary>
@@ -190,6 +187,7 @@ public partial class Home : IDisposable
         }
 
         table = ModelJson.Clone(item);
+        collapsed.Remove(item.Module);
         dirty = false;
         selected.Clear();
         advanced = null;
@@ -215,15 +213,10 @@ public partial class Home : IDisposable
 
         project = projects.FirstOrDefault(p => p.Id == id);
         LoadProjectAccess();
-        table = ModelJson.Clone(project?.Tables.FirstOrDefault());
-        dirty = false;
-        selected.Clear();
         collapsed.Clear();
-        advanced = null;
-        view = "design";
-        tab = "fields";
-        message = "";
-        error = "";
+        search = "";
+        ResetProjectHome();
+        RememberProject();
     }
 
     /// <summary>
@@ -236,7 +229,21 @@ public partial class Home : IDisposable
             return;
         }
 
-        Run(() => { var id = project?.Id; var tid = table?.Id; projects = Store.Projects(principal); project = projects.FirstOrDefault(p => p.Id == id) ?? projects.FirstOrDefault(); LoadProjectAccess(); table = ModelJson.Clone(project?.Tables.FirstOrDefault(t => t.Id == tid) ?? project?.Tables.FirstOrDefault()); dirty = false; selected.Clear(); error = ""; if (tab == "sql" && table != null) { GenerateSql(); } });
+        Run(() =>
+        {
+            var id = project?.Id;
+            var tid = table?.Id;
+            projects = Store.Projects(principal);
+            project = projects.FirstOrDefault(p => p.Id == id) ?? projects.FirstOrDefault();
+            LoadProjectAccess();
+            table = ModelJson.Clone(project?.Tables.FirstOrDefault(t => t.Id == tid));
+            dirty = false;
+            selected.Clear();
+            advanced = null;
+            if (view == "design" && table == null) { ResetProjectHome(); }
+            else if (view == "overview") { LoadProjectActivity(); }
+            if (tab == "sql" && table != null) { GenerateSql(); }
+        });
     }
 
     /// <summary>
@@ -298,6 +305,13 @@ public partial class Home : IDisposable
         }
 
         var previousRevision = project.Revision;
+        designIssues = DesignValidation.Check(WorkingProject(), table);
+        if (designIssues.Count > 0)
+        {
+            modal = "validation";
+            error = "设计检查未通过，请修正后再保存。";
+            return;
+        }
         project = Store.SaveTable(principal, project.Id, previousRevision, table);
         projects[projects.FindIndex(p => p.Id == project.Id)] = project;
         table = ModelJson.Clone(project.Tables.First(t => t.Id == table.Id));
@@ -341,7 +355,7 @@ public partial class Home : IDisposable
     /// </summary>
     private void AddColumn()
     {
-        if (table == null)
+        if (table == null || !CanDesign)
         {
             return;
         }
@@ -352,38 +366,13 @@ public partial class Home : IDisposable
             n++;
         }
 
-        table.Columns.Add(new ColumnDesign { Name = "Column" + n });
+        var column = new ColumnDesign { Name = "Column" + n };
+        table.Columns.Add(column);
+        selected.Clear();
+        selected.Add(column.Id);
+        RevealColumn(column);
         MarkDirty();
-    }
-
-    /// <summary>
-    /// 复制选中字段并重建 ID，清除自增及主键以避免立即产生冲突。
-    /// </summary>
-    private void CopyColumns()
-    {
-        if (table == null)
-        {
-            return;
-        }
-
-        foreach (var c in table.Columns.Where(c => selected.Contains(c.Id)).ToArray())
-        {
-            var copy = ModelJson.Clone(c);
-            copy.Id = Guid.NewGuid().ToString("N");
-            copy.Name += "_copy";
-            while (table.Columns.Any(x => x.Name == copy.Name))
-            {
-                copy.Name += "_copy";
-            }
-
-            copy.Identity = false;
-            copy.PrimaryKeyOrder = 0;
-            // 副本保留默认表达式，但不能复用原字段的约束标识。
-            copy.DefaultConstraintName = "";
-            copy.DefaultConstraintSystemNamed = false;
-            table.Columns.Add(copy);
-        }
-        MarkDirty();
+        message = $"已新增字段 {column.Name}，请填写字段名和定义名。";
     }
 
     /// <summary>
@@ -446,7 +435,7 @@ public partial class Home : IDisposable
             return;
         }
 
-        Run(() => { project = Store.NewProject(principal, projectName, projectDescription); projects.Add(project); LoadProjectAccess(); table = null; dirty = false; modal = ""; view = "design"; });
+        Run(() => { project = Store.NewProject(principal, projectName, projectDescription); projects.Add(project); LoadProjectAccess(); ResetProjectHome(); RememberProject(); });
     }
 
     /// <summary>
@@ -533,38 +522,6 @@ public partial class Home : IDisposable
         }
         catch (JSException) { error = "浏览器未允许访问剪贴板，请选中 SQL 手动复制。"; }
     }
-
-    /// <summary>
-    /// 将 Tab 分隔的行全部解析后一次追加，避免格式错误导致部分导入。
-    /// </summary>
-    private void PasteRows() => Run(() =>
-    {
-        if (table == null)
-        {
-            return;
-        }
-
-        var added = new List<ColumnDesign>();
-        foreach (var line in paste.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var cells = line.TrimEnd('\r').Split('\t');
-            if (cells.Length < 3)
-            {
-                throw new InvalidOperationException("每行至少需要字段名、定义名、类型三列，使用 Tab 分隔。");
-            }
-
-            added.Add(new ColumnDesign { Name = cells[0].Trim(), Label = cells[1], Type = cells[2].Trim().ToLowerInvariant(), Length = cells.ElementAtOrDefault(3)?.Trim() is { Length: > 0 } length ? length : "50", Nullable = cells.ElementAtOrDefault(4)?.Trim().ToUpperInvariant() != "Y", Comment = cells.ElementAtOrDefault(5) ?? "" });
-        }
-        if (added.Count == 0)
-        {
-            throw new InvalidOperationException("请先粘贴数据。");
-        }
-
-        table.Columns.AddRange(added);
-        MarkDirty();
-        modal = "";
-        message = $"已添加 {added.Count} 个字段，请检查并保存。";
-    });
 
     /// <summary>
     /// 根据当前面板分派新增索引、外键或检查约束。

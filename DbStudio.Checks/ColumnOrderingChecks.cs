@@ -39,7 +39,7 @@ internal static class ColumnOrderingChecks
         ColumnOrdering.Move(table.Columns, selection, -1);
         check("Batch movement retains every field attribute and identity", table.Columns.All(c => before[c.Id] == JsonSerializer.Serialize(c, ModelJson.Options)));
         var project = store.NewProject(admin, "字段批量移动验证", "隔离测试");
-        project = store.SaveTable(admin, project.Id, project.Revision, table);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, table);
         var saved = store.Projects(admin).Single(p => p.Id == project.Id).Tables.Single();
         check("Batch moved order survives save and reload", saved.Columns.Select(c => c.Name).SequenceEqual(["Amount", "Name", "Id"]));
         var staleSelection = new HashSet<string> { "no-such-field" };

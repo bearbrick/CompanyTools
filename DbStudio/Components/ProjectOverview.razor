@@ -1,0 +1,38 @@
+<section class="project-overview" aria-label="项目首页">
+    <header class="overview-header">
+        <div><span class="eyebrow">项目首页 · SQL Server</span><h1>@Project.Name</h1><p>@(string.IsNullOrWhiteSpace(Project.Description) ? "在这里查看项目概况，选择数据表继续设计。" : Project.Description)</p></div>
+        <div class="overview-actions"><button @onclick="RefreshRequested"><Icon Name="arrow-clockwise" /> 刷新统计</button>@if (CanDesign) { <button class="primary" @onclick="NewTableRequested"><Icon Name="plus-lg" /> 新建表</button> }</div>
+    </header>
+    <div class="overview-caption"><span>基于已保存的项目设计</span><span>版本 r@(Project.Revision)</span></div>
+    <div class="overview-metrics">
+        @foreach (var metric in Metrics)
+        {
+            <article><span>@metric.Label</span><strong>@metric.Value.ToString("N0")</strong><small>@metric.Unit</small></article>
+        }
+    </div>
+    <div class="overview-panels">
+        <section class="overview-panel">
+            <header><div><h2>模块概览</h2><p>按项目中的模块顺序排列，包含空模块。</p></div></header>
+            <div class="overview-modules">
+                @foreach (var module in Modules)
+                {
+                    <div class="overview-module"><div><span><Icon Name="folder2" /> @module.Name</span><b>@module.Tables 张表 <small>· @module.Columns 个字段</small></b></div><progress value="@module.Tables" max="@Math.Max(1, Project.Tables.Count)" aria-label="@(module.Name + "的表数量")"></progress></div>
+                }
+                @if (Modules.Count == 0) { <p class="overview-empty">还没有模块，可以在项目设置中创建。</p> }
+            </div>
+        </section>
+        <section class="overview-panel">
+            <header><div><h2>最近活动</h2><p>当前项目最近 20 条操作，最新记录在前。</p></div></header>
+            <div class="overview-activities">
+                @foreach (var activity in Activities)
+                {
+                    <article class="overview-activity">
+                        <div class="activity-heading"><span class="activity-action">@activity.Action</span><span class="activity-actor">@activity.Actor</span><time datetime="@activity.Time">@ActivityTime(activity.Time)</time></div>
+                        <p>@activity.Detail</p>
+                    </article>
+                }
+                @if (Activities.Count == 0) { <p class="overview-empty">暂无项目活动。创建或保存设计后，操作记录会显示在这里。</p> }
+            </div>
+        </section>
+    </div>
+</section>

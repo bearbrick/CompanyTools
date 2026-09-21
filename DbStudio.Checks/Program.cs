@@ -35,7 +35,7 @@ Check("Customer source types retained", customerSql.Contains("[CustNum] nvarchar
 
 var project = store.NewProject(admin!, "测试项目", "自动化测试，隔离数据目录");
 var parent = new TableDesign { Name = "Parent", Label = "父表", Columns = [new() { Name = "TenantId", Type = "int", Nullable = false, PrimaryKeyOrder = 1 }, new() { Name = "Id", Type = "bigint", Nullable = false, PrimaryKeyOrder = 2 }] };
-project = store.SaveTable(admin!, project.Id, project.Revision, parent);
+project = store.SaveLabeledTable(admin!, project.Id, project.Revision, parent);
 var child = new TableDesign
 {
     Name = "Child",
@@ -46,7 +46,7 @@ var child = new TableDesign
     Indexes = [new() { Name = "IX_Child_Parent", Columns = "TenantId,ParentId", Include = "Price", Filter = "[Quantity] > 0" }, new() { Name = "UQ_Child_Name", Columns = "Name", Unique = true, IsConstraint = true }],
     Checks = [new() { Name = "CK_Child_Quantity", Expression = "[Quantity] > 0" }]
 };
-project = store.SaveTable(admin!, project.Id, project.Revision, child);
+project = store.SaveLabeledTable(admin!, project.Id, project.Revision, child);
 var ddl = store.Ddl(admin!, project, child);
 Check("Identity generated", ddl.Contains("IDENTITY(1,1)"));
 Check("Computed persisted generated", ddl.Contains("[Total] AS ([Price] * [Quantity]) PERSISTED"));
@@ -79,9 +79,9 @@ Invalid("Missing index columns rejected", t => t.Indexes[0].Columns = "Unknown")
 Invalid("Unique constraint cannot have filter", t => t.Indexes[1].Filter = "[Id] > 0");
 Invalid("Duplicate constraint names rejected", t => t.Checks[0].Name = t.ForeignKeys[0].Name);
 Invalid("Multiple SQL statements rejected", t => t.Columns[3].Default = "0); DROP TABLE X;--");
-Reject<InvalidOperationException>("Concurrent stale save rejected", () => store.SaveTable(admin!, project.Id, project.Revision - 1, child));
-Reject<InvalidOperationException>("Referenced parent deletion rejected", () => store.SaveTable(admin!, project.Id, project.Revision, parent, true));
-Reject<InvalidOperationException>("Inbound FK protects parent column changes", () => { var copy = ModelJson.Clone(parent); copy.Columns[1].Type = "int"; store.SaveTable(admin!, project.Id, project.Revision, copy); });
+Reject<InvalidOperationException>("Concurrent stale save rejected", () => store.SaveLabeledTable(admin!, project.Id, project.Revision - 1, child));
+Reject<InvalidOperationException>("Referenced parent deletion rejected", () => store.SaveLabeledTable(admin!, project.Id, project.Revision, parent, true));
+Reject<InvalidOperationException>("Inbound FK protects parent column changes", () => { var copy = ModelJson.Clone(parent); copy.Columns[1].Type = "int"; store.SaveLabeledTable(admin!, project.Id, project.Revision, copy); });
 Check("Failed save is transactional", store.Projects(admin!).First(p => p.Id == project.Id).Revision == project.Revision);
 var restarted = new StudioStore(env, config);
 Check("Data persists across new store instances", restarted.Projects(admin!).First(p => p.Id == project.Id).Tables.Count == 2);
@@ -91,7 +91,7 @@ var reader = store.Login("reader.test", "ReadOnly12345!")!;
 Check("Unassigned reader sees no projects", store.Projects(reader).Count == 0);
 store.SaveProjectMember(admin!, project.Id, "reader.test", ProjectAccess.Read);
 Check("Reader sees only assigned project", store.Projects(reader).Select(p => p.Id).SequenceEqual([project.Id]));
-Reject<UnauthorizedAccessException>("Reader cannot save", () => store.SaveTable(reader, project.Id, project.Revision, child));
+Reject<UnauthorizedAccessException>("Reader cannot save", () => store.SaveLabeledTable(reader, project.Id, project.Revision, child));
 Reject<UnauthorizedAccessException>("Reader cannot export", () => store.ExportProject(reader, project.Id));
 Reject<UnauthorizedAccessException>("Reader cannot export project SQL", () => store.ExportProjectSql(reader, project.Id));
 Reject<UnauthorizedAccessException>("Reader cannot manage users", () => store.Users(reader));
@@ -101,11 +101,11 @@ store.SaveUser(admin!, new("designer-test", "designer.test", "设计测试", "de
 var designer = store.Login("designer.test", "Designer12345!")!;
 store.SaveProjectMember(admin!, project.Id, "designer.test", ProjectAccess.Read | ProjectAccess.Design | ProjectAccess.Export);
 child.Comment = "设计成员修改说明";
-project = store.SaveTable(designer, project.Id, project.Revision, child);
+project = store.SaveLabeledTable(designer, project.Id, project.Revision, child);
 Check("Designer can save", project.Revision == 4);
 Reject<UnauthorizedAccessException>("Designer cannot manage roles", () => store.SaveRole(designer, new("no", "No", Permission.All)));
 store.SaveRole(admin!, new("designer", "设计师", Permission.Read));
-Reject<UnauthorizedAccessException>("Role revocation affects existing session", () => store.SaveTable(designer, project.Id, project.Revision, child));
+Reject<UnauthorizedAccessException>("Role revocation affects existing session", () => store.SaveLabeledTable(designer, project.Id, project.Revision, child));
 store.SaveUser(admin!, new("reader-test", "reader.test", "只读测试", "reader", false), "");
 Reject<UnauthorizedAccessException>("Disabled user's existing session rejected", () => store.Projects(reader));
 Check("Disabled login rejected", store.Login("reader.test", "ReadOnly12345!") == null);
@@ -222,7 +222,7 @@ var projectA = store.NewProject(workerA, "甲项目", "隔离测试");
 var projectB = store.NewProject(workerB, "乙项目", "隔离测试");
 Check("Creator is project manager", store.AccessTo(workerA, projectA.Id) == ProjectAccess.All);
 Check("Project lists isolated", store.Projects(workerA).Select(p => p.Id).SequenceEqual([projectA.Id]) && store.Projects(workerB).Select(p => p.Id).SequenceEqual([projectB.Id]));
-Reject<UnauthorizedAccessException>("Cross-project save rejected", () => store.SaveTable(workerA, projectB.Id, projectB.Revision, parent));
+Reject<UnauthorizedAccessException>("Cross-project save rejected", () => store.SaveLabeledTable(workerA, projectB.Id, projectB.Revision, parent));
 Reject<UnauthorizedAccessException>("Cross-project export rejected", () => store.ExportProject(workerA, projectB.Id));
 Reject<UnauthorizedAccessException>("Cross-project SQL export rejected", () => store.ExportProjectSql(workerA, projectB.Id));
 Reject<UnauthorizedAccessException>("Cross-project DDL rejected", () => store.Ddl(workerA, projectB, parent));
@@ -237,13 +237,13 @@ projectA = store.SaveModule(workerA, projectA.Id, projectA.Revision, null, "采�
 Check("Empty module persists", store.Projects(workerA).Single().Modules.SequenceEqual(["采购"]));
 var moduleTable = ModelJson.Clone(parent);
 moduleTable.Module = "采购";
-projectA = store.SaveTable(workerA, projectA.Id, projectA.Revision, moduleTable);
+projectA = store.SaveLabeledTable(workerA, projectA.Id, projectA.Revision, moduleTable);
 projectA = store.SaveModule(workerA, projectA.Id, projectA.Revision, "采购", "供应链");
 Check("Module rename updates all table membership", projectA.Modules.SequenceEqual(["供应链"]) && projectA.Tables.Single().Module == "供应链");
 Reject<InvalidOperationException>("Duplicate module rejected", () => store.SaveModule(workerA, projectA.Id, projectA.Revision, null, "供应链"));
 store.SaveProjectMember(workerA, projectA.Id, "worker.b", ProjectAccess.Read);
 Check("Explicit membership grants only chosen project", store.Projects(workerB).Count == 2);
-Reject<UnauthorizedAccessException>("Read membership cannot inherit global design access", () => store.SaveTable(workerB, projectA.Id, projectA.Revision, moduleTable));
+Reject<UnauthorizedAccessException>("Read membership cannot inherit global design access", () => store.SaveLabeledTable(workerB, projectA.Id, projectA.Revision, moduleTable));
 Reject<UnauthorizedAccessException>("Read membership cannot manage members", () => store.SaveProjectMember(workerB, projectA.Id, "worker.b", ProjectAccess.All));
 Reject<UnauthorizedAccessException>("Read membership cannot create share", () => store.CreateShare(workerB, projectA.Id, "越权", 1));
 Check("Project audit excludes other projects", store.Audit(workerB, projectA.Id).All(a => !a.Detail.Contains("乙项目")));
@@ -255,7 +255,7 @@ Check("Anonymous share exposes only chosen saved project", store.SharedProject(s
 Check("Invalid share token reveals nothing", store.SharedProject("bad") == null && store.SharedProject(new string('a', 64)) == null);
 projectA = store.UpdateProject(workerA, projectA.Id, projectA.Revision, "实时分享新版", "");
 Check("Share reflects latest saved revision", store.SharedProject(shareToken)?.Revision == projectA.Revision);
-Reject<UnauthorizedAccessException>("Share token is not an editor login", () => store.SaveTable(new ClaimsPrincipal(new ClaimsIdentity([new Claim("share", shareToken)])), projectA.Id, projectA.Revision, moduleTable));
+Reject<UnauthorizedAccessException>("Share token is not an editor login", () => store.SaveLabeledTable(new ClaimsPrincipal(new ClaimsIdentity([new Claim("share", shareToken)])), projectA.Id, projectA.Revision, moduleTable));
 Reject<UnauthorizedAccessException>("Cannot revoke another project's share", () => store.RevokeShare(workerB, projectA.Id, store.Shares(workerA, projectA.Id).Single().Id));
 store.RevokeShare(workerA, projectA.Id, store.Shares(workerA, projectA.Id).Single().Id);
 Check("Revoked share immediately rejected", store.SharedProject(shareToken) == null);
@@ -273,10 +273,12 @@ var cleanStore = new StudioStore(env, new ConfigurationBuilder().AddInMemoryColl
 Check("New installation has no Excel seed dependency", cleanStore.Projects(cleanStore.Login("admin", "CleanAdmin123!")!).Single().Tables.Count == 0);
 ConnectionChecks.Run(store, workerA, workerB, projectA, projectB, testPath, Check);
 await SharePageChecks.RunAsync(Check);
+await ProjectOverviewChecks.RunAsync(Check);
 RevisionChecks.Run(store, nextAdmin!, testPath, Check);
 TableCopyChecks.Run(store, nextAdmin!, workerA, Check);
 ModuleOrderChecks.Run(store, nextAdmin!, workerA, Check);
 ColumnOrderingChecks.Run(store, nextAdmin!, Check);
+ColumnClipboardChecks.Run(Check);
 TableDeploymentChecks.Run(Check);
 SchemaModelFingerprintChecks.Run(Check);
 SchemaDeploymentSecurityChecks.Run(Check);
@@ -299,8 +301,14 @@ foreach (var t in imported.Tables)
 }
 Check("All imported table scripts parse with Microsoft ScriptDom: " + string.Join(" | ", syntaxProblems), syntaxProblems.Count == 0);
 ModelPackageChecks.Run(Check);
+DesignValidationChecks.Run(store, nextAdmin!, Check);
+EmptyColumnDeletionChecks.Run(Check);
 ConstraintIdentityChecks.Run(Check);
 ReversePreviewChecks.Run(Check);
+var categoryCompatibility = new DesignProject { Tables = [new() { DataCategory = "legacy-unknown" }] };
+ModelJson.NormalizeImport(categoryCompatibility);
+Check("Historical projects receive a safe unclassified data tag", categoryCompatibility.Tables[0].DataCategory == TableDataCategories.Unclassified
+    && TableDataCategories.All.Select(item => item.Id).Distinct().Count() == TableDataCategories.All.Count);
 await DeployReportChecks.RunAsync(Check);
 Check("Full imported project builds as a DacFx comparison package", SqlServerTools.BuildPackage(imported).Length > 0);
 File.WriteAllText(Path.Combine(root, "Seed", "validation-report.json"), JsonSerializer.Serialize(sourceProblems, ModelJson.Options));
@@ -311,6 +319,11 @@ if (!string.IsNullOrWhiteSpace(sqlTestServer))
     await DatabaseChecks.RunAsync(store, nextAdmin!, sqlTestServer, Check);
     await SingleTableDatabaseChecks.RunAsync(store, nextAdmin!, sqlTestServer, Check);
     await TypeExpansionDatabaseChecks.RunAsync(store, nextAdmin!, sqlTestServer, Check);
+}
+var emptyColumnTestServer = Environment.GetEnvironmentVariable("STUDIO_EMPTY_COLUMN_TEST_SERVER");
+if (!string.IsNullOrWhiteSpace(emptyColumnTestServer))
+{
+    await EmptyColumnDeletionChecks.RunAsync(store, nextAdmin!, emptyColumnTestServer, Check);
 }
 Console.WriteLine($"SUCCESS: {passed} checks passed. Isolated data: {testPath}");
 

@@ -97,17 +97,19 @@ public partial class Home
             project = Store.ImportProject(principal, importJson, importName);
             projects.Add(project);
             LoadProjectAccess();
-            table = ModelJson.Clone(project.Tables.FirstOrDefault());
+            table = null;
             selected.Clear();
             collapsed.Clear();
             search = fieldSearch = "";
             advanced = null;
             dirty = false;
             tab = "fields";
-            view = "design";
+            view = "overview";
+            LoadProjectActivity();
             modal = "";
             importPreview = null;
             importJson = "";
+            RememberProject();
             message = $"已导入新项目「{project.Name}」，共 {project.Tables.Count} 张表。";
         });
     }

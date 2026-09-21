@@ -9,7 +9,7 @@ internal static class ModuleOrderChecks
     {
         var project = store.NewProject(admin, "模块排序验证", "隔离测试项目");
         var table = new TableDesign { Name = "ModuleTable", Module = "隐式模块", Columns = [new() { Name = "Id", Type = "int" }] };
-        project = store.SaveTable(admin, project.Id, project.Revision, table);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, table);
         var revision = project.Revision;
         project = store.SaveModuleOrder(admin, project.Id, revision, ["隐式模块"]);
         check("Unchanged implicit module order does not materialize metadata or bump revision", project.Modules.Count == 0 && project.Revision == revision);

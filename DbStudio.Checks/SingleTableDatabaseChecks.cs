@@ -20,12 +20,12 @@ internal static class SingleTableDatabaseChecks
         var profile = store.SaveConnection(admin, new DatabaseConnection { ProjectId = project.Id, Name = "专属本机测试库", Server = server, Database = database, TrustServerCertificate = true }, "");
         var a = new TableDesign { Name = "Selected", Columns = [new() { Name = "Id", Type = "int", Nullable = false, PrimaryKeyOrder = 1 }, new() { Name = "Value", Type = "nvarchar", Length = "40" }] };
         var b = new TableDesign { Name = "Unselected", Columns = [new() { Name = "Id", Type = "int" }] };
-        project = store.SaveTable(admin, project.Id, project.Revision, a);
-        project = store.SaveTable(admin, project.Id, project.Revision, b);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, a);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, b);
         var tools = new SqlServerTools(store);
         // 新表的匿名默认约束在 DacFx 报告中带类型前缀，也必须正确识别其表范围。
         var fresh = new TableDesign { Name = "Fresh", Columns = [new() { Name = "Value", Type = "int", Default = "0" }] };
-        project = store.SaveTable(admin, project.Id, project.Revision, fresh);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, fresh);
         var freshPlan = await tools.CompareTableAsync(admin, project.Id, profile.Id, fresh.Id);
         check("SQL single-table new table accepts anonymous default report names", freshPlan.Changes.Any(c => c.ObjectType == "SqlDefaultConstraint"));
         check("SQL comparison exposes measured stages", freshPlan.Timings is { Count: >= 4 }
@@ -53,7 +53,7 @@ internal static class SingleTableDatabaseChecks
             command.CommandText = "DROP TABLE dbo.Fresh; DROP TABLE dbo.UnrelatedDuringPreview;";
             await command.ExecuteNonQueryAsync();
         }
-        project = store.SaveTable(admin, project.Id, project.Revision, fresh, delete: true);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, fresh, delete: true);
         var initial = await tools.CompareAsync(admin, project.Id, profile.Id);
         await tools.ExecuteAsync(admin, project.Id, initial.Id, database);
         // 在独立测试库建立安全对象，核对单表同步及清理不会改变用户 SID、角色和授权。
@@ -79,8 +79,8 @@ internal static class SingleTableDatabaseChecks
         a.Columns.Add(new() { Name = "Added", Type = "int", Default = "7", Nullable = false });
         a.Indexes.Add(new() { Name = "IX_Selected_Value", Columns = "Value" });
         b.Columns.Add(new() { Name = "MustNotDeploy", Type = "int" });
-        project = store.SaveTable(admin, project.Id, project.Revision, a);
-        project = store.SaveTable(admin, project.Id, project.Revision, b);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, a);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, b);
         var plan = await tools.CompareTableAsync(admin, project.Id, profile.Id, a.Id);
         check("SQL single-table plan carries explicit table scope", plan.Scope?.TableId == a.Id && plan.Changes.Count > 0);
         check("SQL single-table script excludes unselected pending fields", !plan.Script.Contains("MustNotDeploy"));
@@ -96,7 +96,7 @@ internal static class SingleTableDatabaseChecks
         var full = await tools.CompareAsync(admin, project.Id, profile.Id);
         check("SQL whole-project comparison still exposes unselected pending work", full.Script.Contains("MustNotDeploy"));
         a.Columns.RemoveAll(c => c.Name == "Added");
-        project = store.SaveTable(admin, project.Id, project.Revision, a);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, a);
         var prune = await tools.CompareTableAsync(admin, project.Id, profile.Id, a.Id, prune: true);
         check("SQL single-table prune has a column removal without other table drops", prune.Changes.Any(c => c.Operation == "Drop") && !prune.Script.Contains("DROP TABLE [dbo].[Unselected]"));
         await tools.ExecuteAsync(admin, project.Id, prune.Id, database);

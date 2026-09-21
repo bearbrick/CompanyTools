@@ -5,22 +5,17 @@
 {
 <div class="app-shell">
     <header class="topbar">
-        <a class="brand" href="/"><Icon Name="database" /><b>DB Studio</b></a>
+        <button class="brand" title="返回项目首页" aria-label="返回项目首页" disabled="@databaseBusy" @onclick="OpenProjectHome"><Icon Name="database" /><b>DB Studio</b></button>
         <span class="brand-sub">数据库设计工作台</span>
         <span class="header-divider"></span>
         <StudioSelect Class="project-picker" Label="选择项目" Value="@project?.Id" ValueChanged="ChooseProject" Items="ProjectOptions" />
         <button class="project-settings-entry" disabled="@(project == null)" @onclick="() => OpenProjectSettings()"><Icon Name="pencil" /> 项目设置</button>
         <div class="header-actions">
-            <button @onclick='() => menu = menu == "export" ? "" : "export"'><Icon Name="box-arrow-up-right" /> 备份与导入 <Icon Name="chevron-down" /></button>
-            <button @onclick='() => menu = menu == "tools" ? "" : "tools"'><Icon Name="database-gear" /> 数据库工具 <Icon Name="chevron-down" /></button>
-            @if (Can(Permission.Security)) { <button @onclick="Security"><Icon Name="shield-check" /> 权限管理</button> }
-            <button class="account" @onclick='() => menu = menu == "account" ? "" : "account"'><span class="avatar">@user.DisplayName[..1]</span><span>@user.DisplayName</span><Icon Name="chevron-down" /></button>
-        </div>
-        @if (menu != "")
-        {
-            <div class="dropdown @(menu == "tools" ? "tools-menu" : "")">
+            <div class="header-menu">
+            <button aria-expanded="@(menu == "export" ? "true" : "false")" aria-controls="export-dropdown" @onclick='() => menu = menu == "export" ? "" : "export"'><Icon Name="box-arrow-up-right" /> 备份与导入 <Icon Name="chevron-down" /></button>
             @if (menu == "export")
             {
+                <div id="export-dropdown" class="dropdown export-menu">
                 <h4>项目备份与迁移</h4>
                 <button disabled="@(!CanExport || project == null || project.Tables.Count == 0)" @onclick="OpenArchive"><Icon Name="download" /> 结构归档（PDF）</button>
                 <button disabled="@(!CanExport || project == null)" @onclick="ExportJson"><Icon Name="download" /> 项目备份（JSON）</button>
@@ -30,24 +25,37 @@
                     <button @onclick="OpenImport"><Icon Name="folder2" /> 导入项目备份</button>
                 }
                 <small>项目导出使用全部已保存内容；当前表 SQL 可在 SQL 预览中下载。</small>
+                </div>
             }
+            </div>
+            <div class="header-menu">
+            <button aria-expanded="@(menu == "tools" ? "true" : "false")" aria-controls="tools-dropdown" @onclick='() => menu = menu == "tools" ? "" : "tools"'><Icon Name="database-gear" /> 数据库工具 <Icon Name="chevron-down" /></button>
             @if (menu == "tools")
             {
+                <div id="tools-dropdown" class="dropdown">
                 <h4>SQL Server 数据库工具</h4>
                 <button disabled="@(!projectAccess.HasFlag(ProjectAccess.Database) || !Can(Permission.Design))" @onclick="OpenDatabaseTools"><Icon Name="database-gear" /> 连接、反推与结构同步</button>
                 <small>仅当前项目的数据库维护成员可以使用。</small>
+                </div>
             }
+            </div>
+            @if (Can(Permission.Security)) { <button @onclick="Security"><Icon Name="shield-check" /> 权限管理</button> }
+            <div class="header-menu">
+            <button class="account" aria-expanded="@(menu == "account" ? "true" : "false")" aria-controls="account-dropdown" @onclick='() => menu = menu == "account" ? "" : "account"'><span class="avatar">@user.DisplayName[..1]</span><span>@user.DisplayName</span><Icon Name="chevron-down" /></button>
             @if (menu == "account")
             {
+                <div id="account-dropdown" class="dropdown">
                 <h4>@user.DisplayName <span>@user.RoleName</span></h4>
                 <button @onclick='() => { modal = "password"; menu = ""; oldPassword = newPassword = ""; }'><Icon Name="key" /> 修改密码</button>
                 <form method="post" action="/auth/logout"><AntiforgeryToken /><button type="submit"><Icon Name="box-arrow-right" /> 退出登录</button></form>
+                </div>
             }
             </div>
-        }
+        </div>
     </header>
     <div class="workspace">
         <aside class="sidebar">
+            <button class="project-home-entry @(view == "overview" ? "active" : "")" disabled="@(project == null || databaseBusy)" @onclick="OpenProjectHome"><Icon Name="database" /> 项目首页</button>
             <div class="sidebar-heading"><h2>数据表</h2><button class="text-button" disabled="@(!CanDesign || project == null)" @onclick="NewTable"><Icon Name="plus-lg" /> 新建表</button></div>
             <div class="search-box"><Icon Name="search" /><input placeholder="搜索表名或字段…" aria-label="搜索表名或字段" @bind="search" @bind:event="oninput" /><kbd>/</kbd></div>
             <button class="module-manage-entry text-button" disabled="@(!CanDesign || project == null)" @onclick='() => OpenProjectSettings("modules")'>＋ 新建 / 管理模块</button>
@@ -68,8 +76,12 @@
             <div class="sidebar-footer"><span><Icon Name="database" /> @(project?.Tables.Count ?? 0) 张表</span><button title="刷新项目" aria-label="刷新项目" @onclick="Refresh"><Icon Name="arrow-clockwise" /></button></div>
             @if (Can(Permission.Projects)) { <button class="project-add" @onclick="OpenNewProject"><Icon Name="plus-lg" /> 创建项目</button> }
         </aside>
-        <main class="main-content">
-        @if ((view == "database" || view == "table-database") && project != null)
+        <main class="main-content @(view == "overview" ? "overview-content" : "")">
+        @if (view == "overview" && project != null)
+        {
+            <ProjectOverview @key="project.Id" Project="project" CanDesign="CanDesign" NewTableRequested="NewTable" RefreshRequested="Refresh" Activities="projectActivity" />
+        }
+        else if ((view == "database" || view == "table-database") && project != null)
         {
             <DatabaseToolsPanel @key="(project.Id, view, tableComparisonId)" Project="project" Principal="principal"
                                 TableId='@(view == "table-database" ? tableComparisonId : null)' ReturnRequested="ReturnFromTableComparison"
@@ -77,7 +89,7 @@
         }
         else if (view == "security")
         {
-            <section class="page-heading"><div class="breadcrumb">工作台 / 团队管理</div><div class="title-row"><div><h1>用户与角色 <span class="subtle-tag">RBAC</span></h1><p class="muted">统一管理成员及其操作权限。账号角色限定操作范围，项目成员权限决定可访问的项目。</p></div><button @onclick='() => view = "design"'><Icon Name="arrow-left" /> 返回设计</button></div></section>
+            <section class="page-heading"><div class="breadcrumb">工作台 / 团队管理</div><div class="title-row"><div><h1>用户与角色 <span class="subtle-tag">RBAC</span></h1><p class="muted">统一管理成员及其操作权限。账号角色限定操作范围，项目成员权限决定可访问的项目。</p></div><button @onclick="OpenProjectHome"><Icon Name="arrow-left" /> 返回项目首页</button></div></section>
             <section class="security-section">
                 <div class="section-title"><h2>团队成员 <span>@users.Count</span></h2><button class="primary" @onclick="() => EditUser()"><Icon Name="plus-lg" /> 添加成员</button></div>
                 <table class="list-table"><thead><tr><th>成员</th><th>账号</th><th>角色</th><th>状态</th><th></th></tr></thead><tbody>
@@ -103,7 +115,7 @@
                     <div class="table-identity"><h1>@table.Label</h1><div class="physical-name"><span class="mono" title="@($"{table.Schema}.{table.Name}")">@table.Schema.@table.Name</span><button class="icon-button" aria-label="编辑表信息" disabled="@(!CanDesign)" @onclick='() => modal = "table"'><Icon Name="pencil" /></button></div></div>
                     <div class="save-actions"><span class="save-state @(dirty ? "unsaved" : "")"><span class="state-dot"></span>@(dirty ? "有未保存修改" : "所有更改已保存")</span><button class="text-button" @onclick="CheckDesign"><Icon Name="shield-check" /> 检查设计</button><button class="text-button" disabled="@(!dirty)" @onclick="Refresh">撤销</button><button class="primary save-button" disabled="@(!CanDesign)" @onclick="Save"><Icon Name="floppy" /> 保存设计 <kbd>Ctrl S</kbd></button></div>
                 </div>
-                <div class="table-meta"><span class="table-note" title="@table.Comment">备注 <b>@(table.Comment == "" ? "暂无备注" : table.Comment)</b></span><button class="text-button muted" disabled="@(!CanDesign)" @onclick='() => modal = "table"'>编辑信息 <Icon Name="pencil" /></button><button class="text-button" disabled="@(!CanCompareTable)" @onclick="OpenTableComparison"><Icon Name="arrow-down-up" /> @(dirty ? "保存并比对" : "结构比对")</button><button class="text-button duplicate-table" disabled="@(!CanDesign)" @onclick="OpenTableCopy"><Icon Name="copy" /> 复制表</button></div>
+                <div class="table-meta"><span class="subtle-tag" title="@TableDataCategories.Get(table.DataCategory).Description">@TableDataCategories.Get(table.DataCategory).Name</span><span class="table-note" title="@table.Comment">备注 <b>@(table.Comment == "" ? "暂无备注" : table.Comment)</b></span><button class="text-button muted" disabled="@(!CanDesign)" @onclick='() => modal = "table"'>编辑信息 <Icon Name="pencil" /></button><button class="text-button" disabled="@(!CanCompareTable)" @onclick="OpenTableComparison"><Icon Name="arrow-down-up" /> @(dirty ? "保存并比对" : "结构比对")</button><button class="text-button duplicate-table" disabled="@(!CanDesign)" @onclick="OpenTableCopy"><Icon Name="copy" /> 复制表</button></div>
             </section>
             <nav class="tabs" aria-label="表设计选项">
                 <button class="@(tab == "fields" ? "active" : "")" @onclick='() => OpenTab("fields")'>字段定义 <span>@table.Columns.Count</span></button>
@@ -118,12 +130,12 @@
             {
                 <div class="grid-toolbar">
                     <button disabled="@(!CanDesign)" @onclick="AddColumn"><Icon Name="plus-lg" /> 新增字段</button>
-                    <button disabled="@(!CanDesign || selected.Count == 0)" @onclick="CopyColumns"><Icon Name="copy" /> 复制行</button>
+                    <button disabled="@(!CanDesign || !CanExport || selected.Count == 0 || columnClipboardBusy)" title="复制选中字段到剪贴板，需要设计和导出权限" @onclick="CopyColumns"><Icon Name="copy" /> 批量复制</button>
+                    <button disabled="@(!CanDesign || columnClipboardBusy)" title="从剪贴板生成字段，追加到当前表末尾" @onclick="OpenColumnPaste"><Icon Name="clipboard" /> 批量粘贴</button>
                     <button disabled="@(!CanDesign || selected.Count == 0)" @onclick="DeleteColumns"><Icon Name="trash3" /> 删除</button>
                     <span class="toolbar-divider"></span>
                     <button class="icon-button" disabled="@(!CanMoveColumns(-1))" title="上移选中字段（支持多选）" aria-label="上移选中字段" @onclick="() => MoveColumns(-1)"><Icon Name="arrow-up" /></button>
                     <button class="icon-button" disabled="@(!CanMoveColumns(1))" title="下移选中字段（支持多选）" aria-label="下移选中字段" @onclick="() => MoveColumns(1)"><Icon Name="arrow-down" /></button>
-                    <button class="text-button" disabled="@(!CanDesign)" @onclick='() => { paste = ""; modal = "paste"; }'><Icon Name="clipboard" /> 批量粘贴</button>
                     <div class="toolbar-spacer"></div>
                     <div class="search-box field-search"><Icon Name="search" /><input placeholder="查找字段…" aria-label="查找字段" @bind="fieldSearch" @bind:event="oninput" /></div>
                 </div>
@@ -135,11 +147,11 @@
                     <tbody>
                     @foreach (var c in VisibleColumns)
                     {
-                        <tr @key="c.Id" class="@(selected.Contains(c.Id) ? "selected" : "")">
+                        <tr @key="c.Id" data-column-id="@c.Id" class="@(selected.Contains(c.Id) ? "selected" : "")">
                         <td><input type="checkbox" aria-label="@("选择字段 " + c.Name)" checked="@selected.Contains(c.Id)" @onchange="e => Select(c.Id, (bool)e.Value!)" @onchange:stopPropagation @oninput:stopPropagation /></td>
                         <td class="row-number">@(table.Columns.IndexOf(c) + 1)</td>
-                        <td><input class="mono" aria-label="@("字段名 " + c.Name)" @bind="c.Name" @bind:after="MarkDirty" @bind:event="oninput" /></td>
-                        <td><input aria-label="@("定义名 " + c.Name)" @bind="c.Label" @bind:after="MarkDirty" @bind:event="oninput" /></td>
+                        <td><input class="mono" data-column-name aria-label="@("字段名 " + c.Name)" @bind="c.Name" @bind:after="MarkDirty" @bind:event="oninput" /></td>
+                        <td><input aria-label="@("定义名 " + c.Name)" aria-required="true" required placeholder="必填" @bind="c.Label" @bind:after="MarkDirty" @bind:event="oninput" /></td>
                         <td><StudioSelect Class="type-picker" Label="@("类型 " + c.Name)" @bind-Value="c.Type" @bind-Value:after="MarkDirty" Items="TypeOptions" /></td>
                         <td>@if (SqlServerDdl.HasLength(c.Type)) { <input aria-label="@("长度 " + c.Name)" @bind="c.Length" @bind:after="MarkDirty" @bind:event="oninput" /> } else if (c.Type is "decimal" or "numeric") { <input type="number" aria-label="@("精度 " + c.Name)" @bind="c.Precision" @bind:after="MarkDirty" @bind:event="oninput" /> } else { <span class="dash">—</span> }</td>
                         <td>@if (c.Type is "decimal" or "numeric") { <input type="number" aria-label="@("小数 " + c.Name)" @bind="c.Scale" @bind:after="MarkDirty" @bind:event="oninput" /> } else { <span class="dash">—</span> }</td>
@@ -147,14 +159,14 @@
                         <td><input type="checkbox" aria-label="@("主键 " + c.Name)" checked="@(c.PrimaryKeyOrder > 0)" @onchange="e => SetPk(c,(bool)e.Value!)" /></td>
                         <td><input class="mono" aria-label="@("默认值 " + c.Name)" @bind="c.Default" @bind:after="MarkDirty" @bind:event="oninput" placeholder="—" /></td>
                         <td><input aria-label="@("输入位数 " + c.Name)" @bind="c.InputLimit" @bind:after="MarkDirty" @bind:event="oninput" placeholder="—" /></td>
-                        <td><input aria-label="@("备注 " + c.Name)" title="@c.Comment" @bind="c.Comment" @bind:after="MarkDirty" @bind:event="oninput" placeholder="—" /></td>
+                        <td><ColumnCommentCell Column="c" Open="OpenColumnComment" /></td>
                         <td><button class="icon-button @(c.Identity || c.Computed != "" ? "accent" : "")" aria-label="@("高级设置 " + c.Name)" @onclick='() => { advanced = c; modal = "column"; }'><Icon Name="sliders" /></button></td>
                         </tr>
                     }
                     </tbody></table>
                 </fieldset>
                 @if (!VisibleColumns.Any()) { <div class="empty-grid">没有匹配字段，请调整搜索或新增字段。</div> }
-                </div><button class="add-row" disabled="@(!CanDesign)" @onclick="AddColumn"><Icon Name="plus-lg" /> 添加一行</button>
+                </div>
                 </div>
                 <footer class="grid-footer"><span>共 @table.Columns.Count 个字段 · 已选 @selected.Count 行</span><span>Tab 切换单元格 <i>Enter 下一行</i> <i>高级设置支持自增 / 计算列</i></span></footer>
             }
@@ -189,7 +201,13 @@
 {
 <div class="modal-backdrop">
 <section class="modal @(modal == "column" ? "drawer" : "")" role="dialog" aria-modal="true" aria-label="编辑窗口">
-<div class="modal-heading"><div><span class="eyebrow">DB STUDIO</span><h2>@(modal switch { "table" => "表信息", "copy-table" => "复制表", "column" => "字段高级设置", "project" => "创建项目", "settings" => "项目设置", "paste" => "批量粘贴字段", "user" => "成员设置", "role" => "角色权限", "password" => "修改密码", "validation" => "设计检查", "import" => "导入项目备份", "archive" => "结构归档（PDF）", _ => "" })</h2></div><button class="icon-button" aria-label="关闭窗口" @onclick='() => modal = ""'><Icon Name="x-lg" /></button></div>
+<div class="modal-heading"><div><span class="eyebrow">DB STUDIO</span><h2>@(modal switch { "table" => "表信息", "copy-table" => "复制表", "column" => "字段高级设置", "column-comment" => "字段备注", "project" => "创建项目", "settings" => "项目设置", "paste-columns" => "批量粘贴字段", "user" => "成员设置", "role" => "角色权限", "password" => "修改密码", "validation" => "设计检查", "import" => "导入项目备份", "archive" => "结构归档（PDF）", _ => "" })</h2></div><button class="icon-button" aria-label="关闭窗口" @onclick='() => modal = ""'><Icon Name="x-lg" /></button></div>
+@if (modal == "column-comment" && commentColumn != null)
+{
+    <p class="muted">@commentColumn.Name · @commentColumn.Label</p>
+    <label class="comment-editor-label">备注内容<textarea class="comment-editor" aria-label="备注内容" rows="12" @bind="commentDraft" @bind:event="oninput" placeholder="填写备注，支持换行…"></textarea></label>
+    <div class="modal-footer"><span class="muted">@commentDraft.Length 字符 · 应用后保存设计生效</span><button @onclick='() => modal = ""'>取消</button><button class="primary" @onclick="ApplyColumnComment">应用备注</button></div>
+}
 @if (modal == "archive" && project != null)
 {
     <ProjectArchiveForm Project="project" HasUnsavedChanges="dirty" PreparedBy="@user.DisplayName"
@@ -201,7 +219,7 @@
 }
 @if (modal == "copy-table" && tableCopySource != null && tableCopyOptions != null)
 {
-    <TableCopyForm Source="tableCopySource" Options="tableCopyOptions" Modules="ModuleOptions"
+    <TableCopyForm Source="tableCopySource" Options="tableCopyOptions" Modules="ModuleOptions" Categories="DataCategoryOptions"
                    HasUnsavedChanges="dirty" Error="@tableCopyError" Create="CreateTableCopy" Cancel='() => modal = ""' />
 }
 @if (modal == "import")
@@ -244,7 +262,7 @@
         <Icon Name="@(designIssues.Count == 0 ? "check-circle" : "shield-check")" />
         <div>
             <h3>@(designIssues.Count == 0 ? "结构检查通过" : $"发现 {designIssues.Count} 项需要处理的问题")</h3>
-            <p>@table.Schema.@table.Name · @table.Columns.Count 个字段<br />检查字段、索引、外键、CHECK，以及其他表对当前表的引用。</p>
+            <p>@table.Schema.@table.Name · @table.Columns.Count 个字段<br />检查字段定义名是否填写、字段结构、索引、外键、CHECK，以及其他表对当前表的引用。</p>
         </div>
     </div>
     @if (designIssues.Count > 0)
@@ -256,7 +274,7 @@
 }
 @if (modal == "table" && table != null)
 {
-    <fieldset><div class="form-grid"><label>显示名称<input @bind="table.Label" @bind:after="MarkDirty" @bind:event="oninput" /></label><label>表名<input class="mono" @bind="table.Name" @bind:after="MarkDirty" @bind:event="oninput" /></label><label>架构<input @bind="table.Schema" @bind:after="MarkDirty" @bind:event="oninput" /></label><label>模块<StudioSelect Label="模块" @bind-Value="table.Module" @bind-Value:after="MarkDirty" Items="ModuleOptions" AllowCustom="true" SearchPlaceholder="选择模块或输入新模块…" /></label><label class="wide">备注<textarea @bind="table.Comment" @bind:after="MarkDirty" @bind:event="oninput" rows="3"></textarea></label></div></fieldset>
+    <fieldset><div class="form-grid"><label>显示名称<input @bind="table.Label" @bind:after="MarkDirty" @bind:event="oninput" /></label><label>表名<input class="mono" @bind="table.Name" @bind:after="MarkDirty" @bind:event="oninput" /></label><label>架构<input @bind="table.Schema" @bind:after="MarkDirty" @bind:event="oninput" /></label><label>模块<StudioSelect Label="模块" @bind-Value="table.Module" @bind-Value:after="MarkDirty" Items="ModuleOptions" AllowCustom="true" SearchPlaceholder="选择模块或输入新模块…" /></label><label>数据分类<StudioSelect Label="数据分类" @bind-Value="table.DataCategory" @bind-Value:after="MarkDirty" Items="DataCategoryOptions" /></label><label class="wide">备注<textarea @bind="table.Comment" @bind:after="MarkDirty" @bind:event="oninput" rows="3"></textarea></label></div></fieldset>
     <fieldset disabled="@(!CanDesign)">
         <div class="form-grid">
             <label>主键约束名称<input @bind="table.PrimaryKeyName" @bind:after="() => { table.PrimaryKeySystemNamed = false; MarkDirty(); }" @bind:event="oninput" placeholder="留空自动生成 PK_表名" /></label>
@@ -298,9 +316,11 @@
 {
     <label>项目名称<input @bind="projectName" @bind:event="oninput" placeholder="例如：新工厂 ERP" /></label><label>项目说明<textarea rows="3" @bind="projectDescription" @bind:event="oninput"></textarea></label><label>数据库方言<input value="SQL Server" disabled /></label><div class="modal-footer"><span class="muted">每个项目独立维护数据表。</span><button class="primary" @onclick="CreateProject">创建项目</button></div>
 }
-@if (modal == "paste")
+@if (modal == "paste-columns")
 {
-    <p class="muted">从 Excel 复制以下顺序的列（不含表头）：字段名、定义名、类型、长度、非空（Y）、备注。前三列必填。</p><textarea class="paste-area mono" rows="10" @bind="paste" @bind:event="oninput" placeholder="将 Excel 单元格粘贴到这里…"></textarea><div class="modal-footer"><span class="muted">追加到当前表末尾，不覆盖已有字段。</span><button class="primary" @onclick="PasteRows">添加到表</button></div>
+    <p class="muted">浏览器不允许直接读取剪贴板。请在下方按 Ctrl+V，粘贴通过「批量复制」取得的字段定义。</p>
+    <textarea class="paste-area mono" rows="8" aria-label="字段剪贴板内容" maxlength="@ColumnClipboard.MaxCharacters" @bind="columnClipboardText" @bind:event="oninput" placeholder="在这里按 Ctrl+V 粘贴字段定义…"></textarea>
+    <div class="modal-footer"><span class="muted">追加到当前表末尾，重名自动改名。主键、自增需重新设置。</span><button class="primary" disabled="@(!CanDesign)" @onclick="PasteColumns">生成字段</button></div>
 }
 @if (modal == "user")
 {

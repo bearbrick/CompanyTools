@@ -10,7 +10,7 @@ internal static class TableCopyChecks
         var project = store.NewProject(admin, "复制表检查", "独立测试项目");
         var source = new TableDesign
         {
-            Name = "Source", Label = "来源表", Module = "原模块", Comment = "表备注",
+            Name = "Source", Label = "来源表", Module = "原模块", DataCategory = TableDataCategories.Business, Comment = "表备注",
             PrimaryKeyName = "PK_Target", PrimaryKeyClustered = false,
             Columns =
             [
@@ -26,13 +26,13 @@ internal static class TableCopyChecks
             Checks = [new() { Name = "CK_Target_1", Expression = "[Amount] >= 0" }]
         };
         source.ForeignKeys.Add(new() { Name = "FK_Target_1", Columns = "ParentId", TargetColumns = "Id", TargetTableId = source.Id });
-        project = store.SaveTable(admin, project.Id, project.Revision, source);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, source);
         var original = JsonSerializer.Serialize(source, ModelJson.Options);
         var revision = project.Revision;
-        var options = new TableCopyOptions { Name = " Target ", Schema = " dbo ", Label = "新表定义", Module = "新模块", Comment = "新表备注" };
+        var options = new TableCopyOptions { Name = " Target ", Schema = " dbo ", Label = "新表定义", Module = "新模块", DataCategory = TableDataCategories.Log, Comment = "新表备注" };
         var copy = DesignEditing.CopyTable(project, source, options);
 
-        check("Copy uses final table information", copy.Name == "Target" && copy.Schema == "dbo" && copy.Label == options.Label && copy.Module == options.Module && copy.Comment == options.Comment);
+        check("Copy uses final table information", copy.Name == "Target" && copy.Schema == "dbo" && copy.Label == options.Label && copy.Module == options.Module && copy.DataCategory == TableDataCategories.Log && copy.Comment == options.Comment);
         check("Preparing or cancelling a copy leaves source and storage untouched", original == JsonSerializer.Serialize(source, ModelJson.Options)
             && store.Projects(admin).Single(p => p.Id == project.Id).Revision == revision);
         var comparableColumns = ModelJson.Clone(copy.Columns);
@@ -46,7 +46,7 @@ internal static class TableCopyChecks
         check("Copy allocates non-conflicting schema constraint names", copy.PrimaryKeyName != source.PrimaryKeyName
             && copy.Indexes[0].Name != source.Indexes[0].Name && copy.ForeignKeys[0].Name != source.ForeignKeys[0].Name && copy.Checks[0].Name != source.Checks[0].Name);
         check("Copied self-reference targets new table", copy.ForeignKeys[0].TargetTableId == copy.Id);
-        project = store.SaveTable(admin, project.Id, project.Revision, copy);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, copy);
         check("Copy creates exactly one table and revision without changing original", project.Tables.Count == 2 && project.Revision == revision + 1
             && original == JsonSerializer.Serialize(project.Tables.Single(t => t.Id == source.Id), ModelJson.Options));
         check("Original and copied constraints build together in DacFx", SqlServerTools.BuildPackage(project).Length > 0);
@@ -57,8 +57,8 @@ internal static class TableCopyChecks
         longProject.Tables.Add(longCopy);
         check("Long new table names produce valid constraint identifiers", SqlServerDdl.Validate(longProject, longCopy).Count == 0 && SqlServerTools.BuildPackage(longProject).Length > 0);
         var nextCopy = DesignEditing.CopyTable(project, source, new() { Name = "Another" });
-        check("Copy save rejects stale revision", Rejected<InvalidOperationException>(() => store.SaveTable(admin, project.Id, revision, nextCopy)));
-        check("Copy save enforces project permissions", Rejected<UnauthorizedAccessException>(() => store.SaveTable(outsider, project.Id, project.Revision, nextCopy)));
+        check("Copy save rejects stale revision", Rejected<InvalidOperationException>(() => store.SaveLabeledTable(admin, project.Id, revision, nextCopy)));
+        check("Copy save enforces project permissions", Rejected<UnauthorizedAccessException>(() => store.SaveLabeledTable(outsider, project.Id, project.Revision, nextCopy)));
         check("Rejected copy attempts do not create tables or revisions", store.Projects(admin).Single(p => p.Id == project.Id).Revision == project.Revision);
         copy.Columns[2].Comment = "副本后续编辑";
         check("Editing copied fields cannot mutate original", source.Columns[2].Comment == "业务输入规则");

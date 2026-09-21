@@ -26,7 +26,7 @@ public partial class Home
             return;
         }
         dirty = false;
-        table = ModelJson.Clone(project.Tables.FirstOrDefault(t => t.Id == table?.Id) ?? project.Tables.FirstOrDefault());
+        table = ModelJson.Clone(project.Tables.FirstOrDefault(t => t.Id == table?.Id));
         view = "database";
         menu = "";
     }
@@ -38,7 +38,7 @@ public partial class Home
         {
             return;
         }
-        table = ModelJson.Clone(project.Tables.FirstOrDefault(t => t.Id == table?.Id) ?? project.Tables.FirstOrDefault());
+        table = ModelJson.Clone(project.Tables.FirstOrDefault(t => t.Id == table?.Id));
         dirty = false;
         settingsSection = section;
         modal = "settings";
@@ -50,7 +50,9 @@ public partial class Home
     {
         project = updated;
         projects[projects.FindIndex(p => p.Id == updated.Id)] = updated;
-        table = ModelJson.Clone(updated.Tables.FirstOrDefault(t => t.Id == table?.Id) ?? updated.Tables.FirstOrDefault());
+        table = ModelJson.Clone(updated.Tables.FirstOrDefault(t => t.Id == table?.Id));
+        if (view == "design" && table == null) { ResetProjectHome(); }
+        else if (view == "overview") { LoadProjectActivity(); }
         LoadProjectAccess();
     }
 

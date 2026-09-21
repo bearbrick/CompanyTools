@@ -1,0 +1,15 @@
+.topbar button.brand{border:0;background:transparent;padding:0;cursor:pointer;color:inherit}
+.sidebar .project-home-entry{width:100%;display:flex;align-items:center;gap:9px;margin:0 0 18px;padding:11px 13px;border:1px solid #dfe8f5;border-radius:6px;background:white;color:#5e7697;font-size:13px;text-align:left}
+.sidebar .project-home-entry.active{background:#eaf1ff;color:#1858dc;border-color:#d4e2fb}
+.main-content.overview-content{overflow:hidden}
+
+/* 菜单由各自按钮定位，不依赖用户名长度、权限按钮或窗口宽度的固定偏移。 */
+.header-menu{position:relative;flex-shrink:0}
+.header-menu .dropdown{top:calc(100% + 8px);right:0;left:auto;width:250px;min-width:min(250px,calc(100vw - 24px));max-width:calc(100vw - 24px)}
+.header-menu .export-menu{width:340px}
+.header-actions .dropdown button{color:#223047;background:transparent;padding:12px 9px}
+.header-actions .dropdown button:hover{background:#f2f6fc}
+.header-actions .dropdown ::deep .icon{filter:none;width:16px;display:inline-block}
+.header-actions .dropdown ::deep button>.icon:first-child{display:inline-block}
+.comment-editor-label{display:block;margin-top:18px;color:#6b81a2;font-size:13px}
+.comment-editor{display:block;width:100%;margin-top:8px;min-height:220px;max-height:55vh;line-height:1.8;resize:vertical;white-space:pre-wrap}

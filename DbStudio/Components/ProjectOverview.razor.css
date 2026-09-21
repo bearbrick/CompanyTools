@@ -1,0 +1,45 @@
+.project-overview{padding:32px;overflow:auto;min-height:0;background:#f6f8fc;flex:1}
+.overview-header{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:24px}
+.overview-header h1{font-size:28px;margin:10px 0;color:#16335a;overflow-wrap:anywhere}
+.overview-header h1:focus{outline:none}
+.overview-header p{font-size:13px;line-height:1.8;color:#77869c;margin:0;max-width:680px;overflow-wrap:anywhere}
+.overview-actions{display:flex;gap:10px;flex-shrink:0}.overview-actions button{font-size:12px;white-space:nowrap}
+.overview-caption{display:flex;justify-content:space-between;color:#8795a9;font-size:12px;margin-bottom:12px}
+.overview-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px;margin-bottom:24px}
+.overview-metrics article{border:1px solid #e1e8f2;border-radius:9px;background:white;padding:20px 18px;border-top:3px solid #c7d7f4}
+.overview-metrics article:first-child{border-top-color:#1858dd}.overview-metrics span{display:block;font-size:12px;color:#657792}
+.overview-metrics strong{display:block;font-size:30px;font-weight:600;color:#18365f;margin:12px 0 6px;font-variant-numeric:tabular-nums}
+.overview-metrics small{font-size:11px;color:#95a1b2}.overview-panels{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:22px}
+.overview-panel{background:white;border:1px solid #e1e8f2;border-radius:9px;min-width:0;overflow:hidden}
+.overview-panel>header{padding:22px 24px 18px;border-bottom:1px solid #eef2f8}.overview-panel h2{font-size:16px;color:#233f63;margin:0 0 8px}
+.overview-panel header p{font-size:12px;color:#93a0b3;margin:0}.overview-modules{padding:4px 24px 16px;max-height:440px;overflow:auto}
+.overview-module{padding:18px 0 0}.overview-module>div{display:flex;justify-content:space-between;gap:12px;align-items:center;font-size:12px}
+.overview-module span{color:#526781;overflow-wrap:anywhere}.overview-module b{font-weight:500;white-space:nowrap;color:#456085}.overview-module small{color:#99a6b8}
+.overview-module progress{width:100%;height:5px;display:block;appearance:none;border:0;border-radius:5px;overflow:hidden;margin-top:12px;background:#f0f4fa}
+.overview-module progress::-webkit-progress-bar{background:#f0f4fa}.overview-module progress::-webkit-progress-value{background:#87a9e5;border-radius:5px}.overview-module progress::-moz-progress-bar{background:#87a9e5}
+.overview-empty{padding:30px 12px;text-align:center;color:#92a0b4;font-size:13px;line-height:1.8}
+@media(max-width:1200px){.overview-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.overview-header{align-items:flex-start;flex-direction:column}.project-overview{padding:24px}.overview-panels{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:700px){.project-overview{padding:16px}.overview-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.overview-metrics article{padding:14px 10px}.overview-header h1{font-size:23px}.overview-panel>header{padding:18px 14px}.overview-modules{padding:0 14px 16px}.overview-module>div{align-items:flex-start;flex-direction:column;gap:6px}}
+
+/* 桌面首页填满剩余窗口空间，由两个列表各自滚动，避免外层再出现整页滚动条。 */
+@media(min-width:1201px) and (min-height:700px){
+    .project-overview{display:flex;flex-direction:column;overflow:hidden}
+    .overview-header,.overview-caption,.overview-metrics{flex-shrink:0}
+    .overview-panels{flex:1;min-height:0;grid-template-rows:minmax(0,1fr)}
+    .overview-panel{display:flex;flex-direction:column;min-height:0}
+    .overview-panel>header{flex-shrink:0}
+    .overview-modules,.overview-activities{flex:1;min-height:0;max-height:none}
+}
+/* 小窗口保留内容可达性；列表和必要的窄屏滚动统一使用细滚动条。 */
+.project-overview,.overview-modules,.overview-activities{scrollbar-width:thin;scrollbar-color:#c7d1df transparent}
+
+.overview-activities{max-height:440px;overflow:auto;padding:0 24px 12px}
+.overview-activity{padding:19px 0;border-bottom:1px solid #edf1f7}
+.overview-activity:last-child{border-bottom:0}
+.activity-heading{display:flex;align-items:center;flex-wrap:wrap;gap:10px;font-size:12px}
+.activity-action{background:#eef4ff;color:#3566ac;padding:4px 8px;border-radius:4px}
+.activity-actor{color:#63758e;overflow-wrap:anywhere}
+.activity-heading time{margin-left:auto;font-size:11px;color:#98a5b7;white-space:nowrap;font-variant-numeric:tabular-nums}
+.overview-activity p{font-size:13px;color:#526780;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere;margin:10px 0 0}
+@media(min-width:1201px) and (min-height:700px){.overview-activities{max-height:none}}
+@media(max-width:700px){.overview-activities{padding:0 14px 12px}.activity-heading time{margin-left:0}}

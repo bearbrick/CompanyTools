@@ -33,7 +33,7 @@ internal static class TypeExpansionDatabaseChecks
                     new() { Name = "Item", Type = "varchar", Length = "30", Nullable = false }],
                 Indexes = [new() { Name = "IX_Expansion_Item", Columns = "Item" }]
             };
-            project = store.SaveTable(admin, project.Id, project.Revision, table);
+            project = store.SaveLabeledTable(admin, project.Id, project.Revision, table);
             var initial = await tools.CompareAsync(admin, project.Id, profile.Id);
             await tools.ExecuteAsync(admin, project.Id, initial.Id, database);
             using (var insert = target.CreateCommand())
@@ -44,7 +44,7 @@ internal static class TypeExpansionDatabaseChecks
             table.Columns[1].Type = "nvarchar";
             table.Columns[2].Type = "nvarchar";
             table.Columns[2].Length = "50";
-            project = store.SaveTable(admin, project.Id, project.Revision, table);
+            project = store.SaveLabeledTable(admin, project.Id, project.Revision, table);
             var plan = await tools.CompareAsync(admin, project.Id, profile.Id);
             check("SQL whole project auto approves varchar to nvarchar with existing rows", !plan.AllowDataLoss && plan.Warnings.Any(w => w.Code == "SafeTypeExpansion"));
             await tools.ExecuteAsync(admin, project.Id, plan.Id, database);
@@ -58,13 +58,13 @@ internal static class TypeExpansionDatabaseChecks
             check("SQL widening round trip has zero diff", (await tools.CompareAsync(admin, project.Id, profile.Id)).Changes.Count == 0);
 
             table.Columns[1].Length = "200";
-            project = store.SaveTable(admin, project.Id, project.Revision, table);
+            project = store.SaveLabeledTable(admin, project.Id, project.Revision, table);
             var single = await tools.CompareTableAsync(admin, project.Id, profile.Id, table.Id);
             check("SQL single table widening auto approved", single.Warnings.Any(w => w.Code == "SafeTypeExpansion"));
             await tools.ExecuteAsync(admin, project.Id, single.Id, database);
             table.Columns[1].Length = "250";
             table.Columns[2].Length = "10";
-            project = store.SaveTable(admin, project.Id, project.Revision, table);
+            project = store.SaveLabeledTable(admin, project.Id, project.Revision, table);
             var mixed = await tools.CompareTableAsync(admin, project.Id, profile.Id, table.Id);
             check("SQL mixed shrinking plan never auto approved", !mixed.Warnings.Any(w => w.Code == "SafeTypeExpansion"));
             check("SQL shrinking warning identifies exact column and new capacity", mixed.Warnings.Any(w => w.Code == "TypeCapacityReduction" && w.Issues.Any(i => i.Message.Contains("Item") && i.Message.Contains("10"))));

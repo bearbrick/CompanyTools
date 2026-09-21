@@ -118,6 +118,7 @@ public sealed partial class StudioStore
             else
             {
                 var copy = ModelJson.Clone(table);
+                copy.DataCategory = TableDataCategories.Normalize(copy.DataCategory);
                 if (old < 0)
                 {
                     project.Tables.Add(copy);
@@ -128,7 +129,7 @@ public sealed partial class StudioStore
                 }
 
                 // 父表的主键或字段类型改变时，也必须验证其他表指向它的外键。
-                var errors = SqlServerDdl.ValidateChange(project, copy);
+                var errors = DesignValidation.Check(project, copy);
 
                 if (errors.Count > 0)
                 {

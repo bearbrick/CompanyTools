@@ -14,7 +14,9 @@ internal static class ServiceRegistration
     /// </summary>
     internal static void AddStudioServices(this WebApplicationBuilder builder)
     {
-        builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+        // 字段批量粘贴需要传输结构 JSON；业务解析另限 25 万字符 / 1 MiB，不接受无限大小消息。
+        builder.Services.AddRazorComponents().AddInteractiveServerComponents()
+            .AddHubOptions(options => options.MaximumReceiveMessageSize = 2 * 1024 * 1024);
         builder.Services.AddCascadingAuthenticationState();
         builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
         {

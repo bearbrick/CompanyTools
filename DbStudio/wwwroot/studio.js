@@ -32,6 +32,14 @@ window.studio = {
     window.studio.dialog = dialog;
   },
   setDirty(value) { window.studio.dirty = value; },
+  focusColumn(id) {
+    const row = [...document.querySelectorAll('.field-grid tr[data-column-id]')].find(item => item.dataset.columnId === id);
+    const input = row?.querySelector('input[data-column-name]');
+    if (!input || input.disabled) return;
+    row.scrollIntoView({ block: 'center', inline: 'nearest' });
+    input.focus({ preventScroll: true });
+    input.select();
+  },
   download(name, content, type) {
     const url = URL.createObjectURL(new Blob([content], {type: type || 'text/plain;charset=utf-8'}));
     const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 2000);
@@ -54,6 +62,14 @@ window.studio = {
     const encoded = response.headers.get('content-disposition')?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
     const name = encoded ? decodeURIComponent(encoded) : '数据库结构归档.pdf';
     window.studio.download(name, blob, 'application/pdf');
+  },
+  async readColumnClipboard(maxCharacters) {
+    if (!navigator.clipboard?.readText || !window.isSecureContext) return null;
+    let text;
+    try { text = await navigator.clipboard.readText(); }
+    catch { return null; } // 不允许自动读取时，由用户在输入框 Ctrl+V。
+    if (text.length > maxCharacters) throw new Error('字段剪贴板内容过大');
+    return text;
   },
   async copy(text) {
     if (navigator.clipboard && window.isSecureContext) {

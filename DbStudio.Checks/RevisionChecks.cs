@@ -14,19 +14,19 @@ internal static class RevisionChecks
             Module = "测试模块",
             Columns = [new() { Name = "Id", Type = "int", Nullable = false, PrimaryKeyOrder = 1 }, new() { Name = "Name", Type = "nvarchar", Length = "40" }]
         };
-        project = store.SaveTable(admin, project.Id, project.Revision, table);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, table);
         var revision = project.Revision;
         var before = PersistedState();
         for (var i = 0; i < 3; i++)
         {
-            project = store.SaveTable(admin, project.Id, project.Revision, ModelJson.Clone(table));
+            project = store.SaveLabeledTable(admin, project.Id, project.Revision, ModelJson.Clone(table));
         }
         check("Repeated identical saves preserve revision document and audit", project.Revision == revision && PersistedState() == before);
 
         var reverted = ModelJson.Clone(table);
         reverted.Columns[1].Length = "80";
         reverted.Columns[1].Length = "40";
-        project = store.SaveTable(admin, project.Id, project.Revision, reverted);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, reverted);
         check("Editing then reverting does not create revision", PersistedState() == before);
         project = store.UpdateProject(admin, project.Id, project.Revision, "  " + project.Name + "  ", project.Description);
         project = store.SaveModule(admin, project.Id, project.Revision, table.Module, table.Module);
@@ -34,7 +34,7 @@ internal static class RevisionChecks
 
         // 反推读取顺序可以不同；同名表必须原位替换，不能凭排序制造结构变化。
         var other = new TableDesign { Name = "Other", Columns = [new() { Name = "Id", Type = "int" }] };
-        project = store.SaveTable(admin, project.Id, project.Revision, other);
+        project = store.SaveLabeledTable(admin, project.Id, project.Revision, other);
         before = PersistedState();
         var reverse = ModelJson.Clone(project);
         reverse.Tables.Reverse();
@@ -51,7 +51,7 @@ internal static class RevisionChecks
         var staleRejected = false;
         try
         {
-            store.SaveTable(admin, project.Id, project.Revision - 1, table);
+            store.SaveLabeledTable(admin, project.Id, project.Revision - 1, table);
         }
         catch (InvalidOperationException) { staleRejected = true; }
         check("Stale identical save still rejects without writing", staleRejected && PersistedState() == before);
@@ -73,9 +73,9 @@ internal static class RevisionChecks
             var previousRevision = project.Revision;
             var previousAuditCount = store.Audit(admin, project.Id).Count;
             mutate(table);
-            project = store.SaveTable(admin, project.Id, project.Revision, table);
+            project = store.SaveLabeledTable(admin, project.Id, project.Revision, table);
             var afterChange = PersistedState();
-            project = store.SaveTable(admin, project.Id, project.Revision, ModelJson.Clone(table));
+            project = store.SaveLabeledTable(admin, project.Id, project.Revision, ModelJson.Clone(table));
             check(name, project.Revision == previousRevision + 1 && store.Audit(admin, project.Id).Count == previousAuditCount + 1 && PersistedState() == afterChange);
         }
 

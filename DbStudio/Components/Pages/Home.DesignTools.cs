@@ -20,7 +20,7 @@ public partial class Home
         Run(() =>
         {
             Store.RequireProject(principal, project.Id, ProjectAccess.Read);
-            designIssues = SqlServerDdl.ValidateChange(WorkingProject(), table);
+            designIssues = DesignValidation.Check(WorkingProject(), table);
             modal = "validation";
         });
     }
