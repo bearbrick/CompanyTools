@@ -1,0 +1,98 @@
+@using DbStudio.Core
+
+<div class="quick-search">
+    <Icon Name="search" />
+    <input aria-label="字段与引用快速检索" placeholder="检索字段、同名字段与引用…" autocomplete="off"
+           @bind="query" @bind:event="oninput" @bind:after="Search" @onkeydown="HandleKey" />
+    @if (query == "")
+    {
+        <kbd>Ctrl K</kbd>
+    }
+    else
+    {
+        <button class="quick-clear" title="清空检索" aria-label="清空字段检索" @onclick="Clear"><Icon Name="x-lg" /></button>
+        <div class="quick-results" role="listbox" aria-label="字段检索结果">
+            <header><span>字段与引用</span><small>找到 @response.Total 个字段</small></header>
+            @if (response.Items.Count == 0)
+            {
+                <p>没有匹配字段，请尝试字段名、定义名或表名。</p>
+            }
+            @foreach (var item in response.Items)
+            {
+                <button role="option" @onclick="() => Choose(item)">
+                    <span class="result-main">
+                        <strong>@item.ColumnName</strong>
+                        <em>@(item.ColumnLabel == "" ? "未填写定义名" : item.ColumnLabel)</em>
+                        @if (item.SameNameCount > 1) { <i>同名 @item.SameNameCount</i> }
+                    </span>
+                    <span class="result-path">@item.Module · @DisplayTable(item) <code>@item.Type</code></span>
+                    @if (item.References.Count > 0 || item.ReferencedBy.Count > 0)
+                    {
+                        <span class="result-relations">
+                            @if (item.References.Count > 0)
+                            {
+                                var reference = item.References[0];
+                                <b class="@(reference.IsLogical ? "logical" : "physical")">→ 引用 @DisplayTable(reference).@reference.ColumnName@(item.References.Count > 1 ? $" +{item.References.Count - 1}" : "")</b>
+                            }
+                            @if (item.ReferencedBy.Count > 0)
+                            {
+                                <b>← 被 @item.ReferencedBy.Count 处引用</b>
+                            }
+                        </span>
+                    }
+                </button>
+            }
+            @if (response.Total > response.Items.Count)
+            {
+                <footer>还有 @(response.Total - response.Items.Count) 个结果，请继续输入缩小范围。</footer>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public DesignProject Project { get; set; } = default!;
+    [Parameter] public EventCallback<ProjectFieldSearchEntry> ResultSelected { get; set; }
+
+    private ProjectFieldSearchIndex index = default!;
+    private ProjectFieldSearchResponse response = new([], 0);
+    private string indexedProjectId = "";
+    private int indexedRevision = -1;
+    private string query = "";
+
+    protected override void OnParametersSet()
+    {
+        if (indexedProjectId == Project.Id && indexedRevision == Project.Revision)
+        {
+            return;
+        }
+        indexedProjectId = Project.Id;
+        indexedRevision = Project.Revision;
+        index = ProjectFieldSearchIndex.Build(Project);
+        Search();
+    }
+
+    private void Search() => response = index.Search(query);
+
+    private void Clear()
+    {
+        query = "";
+        Search();
+    }
+
+    private async Task Choose(ProjectFieldSearchEntry item)
+    {
+        await ResultSelected.InvokeAsync(item);
+    }
+
+    private void HandleKey(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            Clear();
+        }
+    }
+
+    private static string DisplayTable(ProjectFieldSearchEntry item) => string.IsNullOrWhiteSpace(item.TableLabel) ? item.TableName : item.TableLabel;
+    private static string DisplayTable(FieldReferenceMatch item) => string.IsNullOrWhiteSpace(item.TableLabel) ? item.TableName : item.TableLabel;
+}

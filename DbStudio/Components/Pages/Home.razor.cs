@@ -222,6 +222,29 @@ public partial class Home : IDisposable
         }
     }
 
+    /// <summary>从顶部字段索引打开目标表，并使用稳定字段 ID 选中、滚动和聚焦对应行。</summary>
+    private async Task OpenFieldSearchResult(ProjectFieldSearchEntry result)
+    {
+        var target = project?.Tables.FirstOrDefault(item => item.Id == result.TableId);
+        if (target == null || !target.Columns.Any(column => column.Id == result.ColumnId) || !await Discard())
+        {
+            return;
+        }
+
+        table = ModelJson.Clone(target);
+        collapsed.Remove(target.Module);
+        dirty = false;
+        selected.Clear();
+        selected.Add(result.ColumnId);
+        advanced = null;
+        fieldSearch = "";
+        tab = "fields";
+        error = "";
+        message = "";
+        view = "design";
+        pendingColumnFocus = (target.Id, result.ColumnId);
+    }
+
     /// <summary>
     /// 只有用户接受放弃未保存内容后才切换项目。
     /// </summary>
