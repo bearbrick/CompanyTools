@@ -1,0 +1,9 @@
+<section class="help-section">
+    <h4>@Title</h4>
+    <div>@ChildContent</div>
+</section>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

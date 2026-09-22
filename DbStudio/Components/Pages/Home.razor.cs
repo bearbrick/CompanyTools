@@ -51,6 +51,27 @@ public partial class Home : IDisposable
     TaskCompletionSource<bool>? confirmation;
     string confirmationText = "";
 
+    private string HelpTopic => view switch
+    {
+        "overview" => "start",
+        "diagram" => "design",
+        "versions" => "database",
+        "database" or "table-database" => "database",
+        "security" => "members",
+        "design" when tab == "sql" => "backup",
+        "design" => "design",
+        _ => "start"
+    };
+
+    /// <summary>
+    /// 从任意工作台页面打开说明，并优先定位到当前功能对应章节。
+    /// </summary>
+    private void OpenHelp()
+    {
+        menu = "";
+        modal = "help";
+    }
+
     /// <summary>
     /// 显示页面内确认窗口，等待用户选择后继续原操作。
     /// </summary>

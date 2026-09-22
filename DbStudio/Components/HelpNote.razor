@@ -1,0 +1,10 @@
+<aside class="help-note @(Kind == "warning" ? "warning" : "")">
+    <b>@Title</b>
+    <p>@ChildContent</p>
+</aside>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Kind { get; set; } = "info";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

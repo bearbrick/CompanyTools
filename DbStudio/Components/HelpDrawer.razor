@@ -1,0 +1,153 @@
+<div class="help-shell">
+    <div class="help-search">
+        <Icon Name="search" />
+        <input aria-label="搜索使用说明" placeholder="搜索功能或操作，例如：同步、外键、备份…" @bind="query" @bind:event="oninput" />
+        @if (query != "")
+        {
+            <button class="icon-button" aria-label="清除搜索" @onclick='() => query = ""'><Icon Name="x-lg" /></button>
+        }
+    </div>
+
+    <div class="help-layout">
+        <nav class="help-nav" aria-label="使用说明目录">
+            <span class="help-nav-label">说明目录</span>
+            @foreach (var item in VisibleTopics)
+            {
+                <button class="@(active == item.Id ? "active" : "")" @onclick="() => Select(item.Id)">
+                    <span>@item.Title</span><small>@item.Subtitle</small>
+                </button>
+            }
+            @if (!VisibleTopics.Any())
+            {
+                <p>没有匹配的说明</p>
+            }
+        </nav>
+
+        <article class="help-content" tabindex="-1">
+            @if (active == "start")
+            {
+                <HelpTitle Eyebrow="快速开始" Title="从项目到第一张表" Description="了解工作台的基本结构，并完成一次安全的表设计。" />
+                <div class="help-steps">
+                    <section><b>1</b><div><h4>选择项目</h4><p>在顶部选择项目。左侧显示该项目的数据表和模块，项目首页展示结构统计与最近活动。</p></div></section>
+                    <section><b>2</b><div><h4>创建或打开数据表</h4><p>点击左侧“新建表”，或从模块中选择已有表。新建内容在保存前只是当前页面的草稿。</p></div></section>
+                    <section><b>3</b><div><h4>检查并保存</h4><p>补充字段定义名、类型和约束后，先点“检查设计”，再点“保存设计”。也可使用 Ctrl+S。</p></div></section>
+                </div>
+                <HelpSection Title="快速找到字段">
+                    <p>顶部“字段与引用快速检索”可搜索字段名、定义名、表名、模块、类型和备注。结果同时显示同名字段数量、引用目标及被引用次数；点击后直接打开表并定位字段。按 Ctrl+K 可随时聚焦检索框。</p>
+                </HelpSection>
+                <HelpNote Title="先保存，再离开">切换项目、表或刷新页面时，未保存的修改需要明确放弃。生成项目备份和结构归档时只包含已保存内容。</HelpNote>
+            }
+            else if (active == "projects")
+            {
+                <HelpTitle Eyebrow="项目管理" Title="项目、模块与成员范围" Description="每个项目独立维护结构、成员、分享链接和数据库连接。" />
+                <HelpSection Title="项目与模块">
+                    <ul><li>“项目设置 → 基本信息”可修改项目名称和说明。</li><li>“模块管理”用于创建空模块或重命名模块；重命名会同步更新模块中的表。</li><li>创建项目的成员会自动成为该项目管理员。</li></ul>
+                </HelpSection>
+                <HelpSection Title="访问范围">
+                    <p>全局角色决定账号能力上限，项目成员身份决定能够访问哪些项目。两者同时生效。</p>
+                    <div class="help-role-grid"><span><b>只读成员</b>浏览设计</span><span><b>设计成员</b>编辑与导出</span><span><b>数据库维护</b>使用数据库工具</span><span><b>项目管理员</b>管理项目全部功能</span></div>
+                </HelpSection>
+            }
+            else if (active == "design")
+            {
+                <HelpTitle Eyebrow="结构设计" Title="字段、索引和约束" Description="编辑区中的变化先保存在当前草稿，点击保存后才形成新的项目修订。" />
+                <HelpSection Title="字段编辑">
+                    <ul><li>字段定义名为必填项；字段名、定义名和类型应在保存前完整填写。</li><li>勾选字段后可批量移动、删除或复制；批量粘贴会追加到目标表末尾。</li><li>自增、计算列、排序规则等设置位于每行右侧的“高级设置”。</li><li>字段备注支持多行内容，应用备注后仍需保存整张表。</li></ul>
+                </HelpSection>
+                <HelpSection Title="约束与 SQL">
+                    <p>“索引”“表关系”和“检查约束”标签页维护表级规则。表关系默认是仅用于设计的逻辑关系；切换为物理外键后才会进入 SQL、数据库比对和同步。</p>
+                </HelpSection>
+                <HelpSection Title="ER 图">
+                    <ul><li>从顶部或项目首页进入 ER 图，画布读取当前项目已经保存的表和关系；未保存草稿不会立即反映在图中。</li><li>物理外键使用蓝绿色实线，逻辑关系使用紫色虚线；表卡片默认只保留主键和关系字段。</li><li>可按模块、关系类型或表与字段名称筛选，也可展开全部字段；筛选时会保留一层直接关联表作为上下文。</li><li>滚轮缩放、拖动画布，点击表卡片可直接打开该表设计；“适应画布”可恢复完整视图。</li></ul>
+                </HelpSection>
+                <HelpNote Title="设计检查不是数据库验证">表达式语义、级联路径以及目标数据库中的依赖，仍需在实际 SQL Server 环境中验证。</HelpNote>
+            }
+            else if (active == "database")
+            {
+                <HelpTitle Eyebrow="数据库工具" Title="反推、比对与结构同步" Description="数据库工具用于读取和同步实际 SQL Server；操作前应先备份目标数据库。" />
+                <div class="help-flow"><span>测试连接</span><i>→</i><span>读取结构</span><i>→</i><span>确认合并</span><i>→</i><span>开始比对</span><i>→</i><span>核对并执行</span></div>
+                <HelpSection Title="安全边界">
+                    <ul><li>结构反推只读取元数据，不读取业务数据。</li><li>比对只生成差异报告和 SQL；执行同步前必须查看完整脚本与警告。</li><li>同步计划绑定成员、项目修订、连接版本和目标结构，十五分钟后失效。</li><li>默认保留数据库中的多余对象，并阻止可能造成数据丢失的变更。</li></ul>
+                </HelpSection>
+                <HelpSection Title="r 修订、V 发布与数据库状态">
+                    <ul><li>每次实际保存设计会增加 r，并保存可比对、可恢复的完整快照。</li><li>执行数据库同步后还会做整库校验；全部与当前设计一致时才生成不可变 V 版本。</li><li>数据库工具和顶部“版本”页会显示每个连接最后成功同步的 r / V。如果库被手工修改，请重新比对。</li></ul>
+                </HelpSection>
+                <HelpNote Kind="warning" Title="高风险操作">允许数据丢失、删除多余对象或清空数据前，请确认备份、目标服务器、数据库名称和影响范围。清空数据不可撤销。</HelpNote>
+            }
+            else if (active == "backup")
+            {
+                <HelpTitle Eyebrow="备份与输出" Title="SQL、JSON 与结构归档" Description="根据使用场景选择输出格式；所有项目级输出都以已保存设计为准。" />
+                <div class="help-format-grid">
+                    <section><span>SQL</span><h4>项目脚本</h4><p>用于审查或在 SQL Server 中建立结构，不会由下载操作自动执行。</p></section>
+                    <section><span>JSON</span><h4>项目备份</h4><p>用于迁移设计；恢复时创建独立项目，不覆盖原项目。</p></section>
+                    <section><span>PDF</span><h4>结构归档</h4><p>用于评审、归档和交付，包含目录、字段及约束信息。</p></section>
+                </div>
+                <HelpSection Title="备份不包含的内容">
+                    <p>项目 JSON 不包含账号、成员、分享链接、数据库连接或密码。服务器完整备份还需要妥善备份 App_Data 与数据保护密钥。</p>
+                </HelpSection>
+            }
+            else if (active == "share")
+            {
+                <HelpTitle Eyebrow="协作查看" Title="免登录只读分享" Description="向无需编辑权限的查看者提供项目最新已保存结构。" />
+                <HelpSection Title="创建与撤销">
+                    <ul><li>在“项目设置 → 只读分享”中选择有效期并创建链接。</li><li>分享页面只能查看单个项目，支持搜索、卡片视图和表关系跳转，并区分逻辑关系与物理外键。</li><li>撤销后链接立即失效，但无法收回访问者已经保存的内容。</li></ul>
+                </HelpSection>
+                <HelpNote Title="对外访问">127.0.0.1 链接只能在服务器本机打开。外部访问需要完成部署并配置公开地址。</HelpNote>
+            }
+            else if (active == "members")
+            {
+                <HelpTitle Eyebrow="账号与权限" Title="成员、角色和密码" Description="权限由全局角色与项目成员权限共同决定。" />
+                <HelpSection Title="日常管理">
+                    <ul><li>“权限管理”维护系统账号和全局角色。</li><li>“项目设置 → 项目成员”控制成员对当前项目的访问范围。</li><li>停用账号、变更角色或修改密码后，旧会话会失效。</li><li>新密码至少 10 位，并同时包含字母和数字。</li></ul>
+                </HelpSection>
+                <HelpNote Kind="warning" Title="最小权限原则">只为成员分配完成工作所需的权限。数据库连接维护、执行同步和公开分享应限定给明确负责人。</HelpNote>
+            }
+            else
+            {
+                <HelpTitle Eyebrow="常见问题" Title="遇到问题时先检查这些" Description="多数问题可通过确认保存状态、权限与项目版本快速定位。" />
+                <div class="help-faq">
+                    <details open><summary>为什么导出的内容没有刚才的修改？</summary><p>项目备份、项目 SQL 和 PDF 归档只读取已保存设计。请先保存当前表，再重新导出。</p></details>
+                    <details><summary>为什么看不到某个项目或功能？</summary><p>检查账号的全局角色以及该项目的成员权限。只读成员无法保存，普通成员默认看不到未分配的项目。</p></details>
+                    <details><summary>为什么数据库同步计划失效？</summary><p>计划超过十五分钟，或项目、连接、目标结构发生变化后，需要重新比对，以保证执行内容仍与当前状态一致。</p></details>
+                    <details><summary>误操作后可以直接撤销吗？</summary><p>未保存的设计可通过刷新放弃。已保存的内容可在“版本”中预览差异后恢复整个项目，或在表的“变更记录”中只恢复当前表。数据库中的数据与结构不会随设计恢复自动回退，仍需备份或后续同步。</p></details>
+                </div>
+            }
+        </article>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string InitialTopic { get; set; } = "start";
+
+    private string query = "";
+    private string active = "start";
+
+    private static readonly Topic[] Topics =
+    [
+        new("start", "快速开始", "认识工作台", "开始 新建 表 保存 项目 首页 搜索 检索 字段 引用 同名 Ctrl K"),
+        new("projects", "项目与模块", "组织与访问范围", "项目 模块 设置 成员 权限"),
+        new("design", "结构设计", "字段、关系与 ER 图", "字段 索引 外键 逻辑关系 物理外键 ER 图 约束 备注 SQL 草稿 保存"),
+        new("database", "数据库工具", "反推、比对与同步", "连接 反推 比对 同步 清空 数据 删除 风险"),
+        new("backup", "备份与归档", "SQL、JSON 与 PDF", "备份 导入 导出 SQL JSON PDF 归档"),
+        new("share", "只读分享", "创建、访问与撤销", "分享 链接 匿名 撤销 外网"),
+        new("members", "账号与权限", "成员、角色与密码", "账号 用户 角色 权限 密码 登录"),
+        new("faq", "常见问题", "保存、权限与恢复", "问题 导出 失效 撤销 恢复 看不到"),
+    ];
+
+    private IEnumerable<Topic> VisibleTopics => string.IsNullOrWhiteSpace(query)
+        ? Topics
+        : Topics.Where(x => $"{x.Title} {x.Subtitle} {x.Keywords}".Contains(query.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    protected override void OnParametersSet()
+    {
+        active = Topics.Any(x => x.Id == InitialTopic) ? InitialTopic : "start";
+    }
+
+    private void Select(string id)
+    {
+        active = id;
+        query = "";
+    }
+
+    private sealed record Topic(string Id, string Title, string Subtitle, string Keywords);
+}
