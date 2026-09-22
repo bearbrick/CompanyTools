@@ -307,6 +307,10 @@ SchemaDeploymentSecurityChecks.Run(Check);
 SchemaDeploymentBoundaryChecks.Run(Check);
 SchemaDriftChecks.Run(Check);
 ProjectSqlChecks.Run(Check);
+LogicalRelationshipChecks.Run(Check);
+RelationshipDiagramChecks.Run(Check);
+ProjectFieldSearchChecks.Run(Check);
+ArchitectureChecks.Run(root, Check);
 TypeExpansionChecks.Run(Check);
 await StructureArchiveChecks.RunAsync(store, nextAdmin!, workerA, testPath, Check);
 

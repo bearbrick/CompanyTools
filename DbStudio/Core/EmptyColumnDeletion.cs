@@ -10,9 +10,35 @@ namespace DbStudio.Core;
 /// <summary>只处理没有其他结构变动的普通列删除；检查数据和删除使用同一事务与排他表锁。</summary>
 public static class EmptyColumnDeletion
 {
-    public sealed record Column(string Schema, string Table, string Name)
+    /// <summary>经模型比对确认待删除的普通列。</summary>
+    public sealed record Column
     {
+        /// <summary>创建一个待删除列标识。</summary>
+        public Column(string schema, string table, string name)
+        {
+            Schema = schema;
+            Table = table;
+            Name = name;
+        }
+
+        /// <summary>所属数据库架构。</summary>
+        public string Schema
+        {
+            get;
+        }
+        /// <summary>所属表名。</summary>
+        public string Table
+        {
+            get;
+        }
+        /// <summary>列名。</summary>
+        public string Name
+        {
+            get;
+        }
+        /// <summary>已安全引用的架构和表名。</summary>
         public string TableSql => $"{SqlServerDdl.Q(Schema)}.{SqlServerDdl.Q(Table)}";
+        /// <summary>用于预览和审计的完整列名。</summary>
         public string DisplayName => $"{TableSql}.{SqlServerDdl.Q(Name)}";
     }
 
@@ -29,7 +55,10 @@ public static class EmptyColumnDeletion
         foreach (var table in source.GetObjects(DacQueryScopes.UserDefined, Table.TypeClass).ToList())
         {
             token.ThrowIfCancellationRequested();
-            if (!targets.TryGetValue(table.Name.ToString(), out var oldTable)) { continue; }
+            if (!targets.TryGetValue(table.Name.ToString(), out var oldTable))
+            {
+                continue;
+            }
             var before = Definition(oldTable.GetScript());
             var after = Definition(table.GetScript());
             if (before == null || after == null)
@@ -39,7 +68,10 @@ public static class EmptyColumnDeletion
             }
             var names = after.Definition.ColumnDefinitions.Select(c => c.ColumnIdentifier.Value).ToHashSet(StringComparer.Ordinal);
             var missing = before.Definition.ColumnDefinitions.Where(c => !names.Contains(c.ColumnIdentifier.Value)).ToList();
-            if (missing.Count == 0) { continue; }
+            if (missing.Count == 0)
+            {
+                continue;
+            }
             foreach (var column in missing)
             {
                 // 默认值、主键、自增、计算列及特殊列交给常规部署，不能隐式移除依赖约束。
@@ -55,7 +87,10 @@ public static class EmptyColumnDeletion
             }
             source.AddOrUpdateObjects(Sql(after), table.GetSourceInformation().SourceName, new TSqlObjectOptions());
         }
-        if (removed.Count == 0) { return []; }
+        if (removed.Count == 0)
+        {
+            return [];
+        }
         // 删除列时其扩展属性随列消失；补回属性后再确认没有其他说明变更。
         foreach (var property in target.GetObjects(DacQueryScopes.UserDefined, ExtendedProperty.TypeClass))
         {
@@ -72,8 +107,10 @@ public static class EmptyColumnDeletion
         using var targetPackage = DacPackage.Load(targetPackageStream);
         var report = XDocument.Parse(DacServices.Script(normalizedPackage, targetPackage, database, new PublishOptions
         {
-            DeployOptions = SchemaDeploymentOptions.Create(prune, false), GenerateDeploymentReport = true,
-            GenerateDeploymentScript = false, CancelToken = token
+            DeployOptions = SchemaDeploymentOptions.Create(prune, false),
+            GenerateDeploymentReport = true,
+            GenerateDeploymentScript = false,
+            CancelToken = token
         }).DeploymentReport);
         var remaining = SchemaDeploymentBoundary.ReadChanges(report);
         if (remaining.Count > 0)
@@ -98,7 +135,10 @@ public static class EmptyColumnDeletion
         try
         {
             var populated = command.ExecuteScalar();
-            if (populated == null) { return true; }
+            if (populated == null)
+            {
+                return true;
+            }
             reasons?.Add($"{populated}：存在非 NULL 数据（空字符串、空格和 0 也算数据），未自动放行删除。");
             return false;
         }
@@ -130,10 +170,14 @@ public static class EmptyColumnDeletion
         }
         // 拿到表锁后再次核验，避免首次检查与锁定之间新增的行安全策略隐藏数据。
         sql.Append(Guards(columns));
-        foreach (var column in columns) { sql.AppendLine($"ALTER TABLE {column.TableSql} DROP COLUMN {SqlServerDdl.Q(column.Name)};"); }
+        foreach (var column in columns)
+        {
+            sql.AppendLine($"ALTER TABLE {column.TableSql} DROP COLUMN {SqlServerDdl.Q(column.Name)};");
+        }
         return sql.AppendLine("COMMIT TRANSACTION;\nEND TRY\nBEGIN CATCH\nIF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\nTHROW;\nEND CATCH;").ToString();
     }
 
+    /// <summary>在单一数据库事务中锁定、复查并删除已批准的空列。</summary>
     public static void Execute(string connectionString, IReadOnlyList<Column> columns, CancellationToken token)
     {
         using var connection = new SqlConnection(connectionString);
@@ -149,7 +193,11 @@ public static class EmptyColumnDeletion
     private static string Guards(IReadOnlyList<Column> columns) => AccessGuard + string.Join("\n", columns.Select(c => c.TableSql).Distinct(StringComparer.Ordinal).Select(table =>
         $"IF EXISTS (SELECT 1 FROM sys.tables WHERE object_id=OBJECT_ID(N'{table.Replace("'", "''")}') AND (temporal_type<>0 OR is_memory_optimized=1 OR is_tracked_by_cdc=1 OR is_replicated=1 OR is_merge_published=1)) THROW 51000, N'特殊表必须使用常规部署检查，不自动删除空列。', 1;\n"));
 
-    private static string Sql(TSqlFragment fragment) { new Sql160ScriptGenerator().GenerateScript(fragment, out var sql); return sql; }
+    private static string Sql(TSqlFragment fragment)
+    {
+        new Sql160ScriptGenerator().GenerateScript(fragment, out var sql);
+        return sql;
+    }
     private static CreateTableStatement? Definition(string sql)
     {
         var fragment = new TSql160Parser(true).Parse(new StringReader(sql), out var errors);

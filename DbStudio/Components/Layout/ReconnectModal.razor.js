@@ -1,4 +1,4 @@
-// Set up event handlers
+// 注册连接状态变化的页面事件。
 const reconnectModal = document.getElementById("components-reconnect-modal");
 reconnectModal.addEventListener("components-reconnect-state-changed", handleReconnectStateChanged);
 
@@ -24,14 +24,14 @@ async function retry() {
     document.removeEventListener("visibilitychange", retryWhenDocumentBecomesVisible);
 
     try {
-        // Reconnect will asynchronously return:
-        // - true to mean success
-        // - false to mean we reached the server, but it rejected the connection (e.g., unknown circuit ID)
-        // - exception to mean we didn't reach the server (this can be sync or async)
+        // 重连会异步返回三种结果：
+        // - true 表示重连成功；
+        // - false 表示已连接服务器，但服务器拒绝恢复连接，例如线路 ID 已失效；
+        // - 异常表示未能连接服务器，异常可能同步或异步发生。
         const successful = await Blazor.reconnect();
         if (!successful) {
-            // We have been able to reach the server, but the circuit is no longer available.
-            // We'll reload the page so the user can continue using the app as quickly as possible.
+            // 服务器可以访问，但原 Blazor 线路已经失效。
+            // 重新加载页面，以便用户尽快恢复操作。
             const resumeSuccessful = await Blazor.resumeCircuit();
             if (!resumeSuccessful) {
                 location.reload();
@@ -40,7 +40,7 @@ async function retry() {
             }
         }
     } catch (err) {
-        // We got an exception, server is currently unavailable
+        // 出现连接异常，服务器当前不可用。
         document.addEventListener("visibilitychange", retryWhenDocumentBecomesVisible);
     }
 }

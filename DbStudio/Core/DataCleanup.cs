@@ -3,6 +3,7 @@ namespace DbStudio.Core;
 /// <summary>清空计划中一张经过实际数据库核验的表。</summary>
 public sealed record DataCleanupTable(string TableId, string Schema, string Name, string Label, string Category, bool ResetsIdentity)
 {
+    /// <summary>带架构名的可读物理表名。</summary>
     public string DisplayName => $"{Schema}.{Name}";
 }
 

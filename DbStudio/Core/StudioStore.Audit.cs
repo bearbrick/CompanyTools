@@ -11,6 +11,7 @@ public sealed partial class StudioStore
     /// 返回最近一百条审计记录，时间为 ISO 8601 格式的 UTC 时间。
     /// </summary>
     /// <param name="principal">调用方身份；服务层会重新验证安全戳及当前权限。</param>
+    /// <param name="projectId">指定项目时只返回该项目记录；留空仅系统管理员可查看全局记录。</param>
     public List<AuditItem> Audit(ClaimsPrincipal principal, string? projectId = null)
     {
         var actor = Require(principal, Permission.Read);

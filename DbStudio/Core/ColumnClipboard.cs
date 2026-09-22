@@ -11,6 +11,7 @@ public sealed class ColumnClipboard
 {
     private List<ColumnDesign> snapshot = [];
 
+    /// <summary>剪贴板文本可接受的最大字符数。</summary>
     public const int MaxCharacters = 250_000;
     private static readonly JsonSerializerOptions ClipboardOptions = new(ModelJson.Options)
     {
@@ -19,6 +20,7 @@ public sealed class ColumnClipboard
         MaxDepth = 16
     };
     private sealed record Payload(string Format, int Version, List<ColumnDesign> Columns);
+    /// <summary>当前已冻结的字段数量。</summary>
     public int Count => snapshot.Count;
 
     /// <summary>按来源表的字段顺序冻结选择；后续编辑来源不会改变已复制的内容。</summary>
@@ -44,7 +46,10 @@ public sealed class ColumnClipboard
             using var document = JsonDocument.Parse(text, new JsonDocumentOptions { MaxDepth = 16 });
             if (document.RootElement.ValueKind != JsonValueKind.Object || !document.RootElement.TryGetProperty("Columns", out var columns) || columns.ValueKind != JsonValueKind.Array
                 || columns.EnumerateArray().Any(column => column.ValueKind != JsonValueKind.Object
-                    || !column.TryGetProperty("Name", out _) || !column.TryGetProperty("Type", out _))) { throw new JsonException(); }
+                    || !column.TryGetProperty("Name", out _) || !column.TryGetProperty("Type", out _)))
+            {
+                throw new JsonException();
+            }
             var payload = JsonSerializer.Deserialize<Payload>(text, ClipboardOptions);
             if (payload?.Format != "DbStudio.Columns" || payload.Version != 1 || payload.Columns is not { Count: > 0 and <= 1024 }
                 || payload.Columns.Any(column => column == null || string.IsNullOrWhiteSpace(column.Name) || column.Name.Length > 128
@@ -88,7 +93,11 @@ public sealed class ColumnClipboard
                 {
                     var suffix = number == 1 ? "_copy" : "_copy" + number;
                     var candidate = source.Name[..Math.Min(source.Name.Length, 128 - suffix.Length)] + suffix;
-                    if (!occupied.Contains(candidate) && !reserved.Contains(candidate)) { copy.Name = candidate; break; }
+                    if (!occupied.Contains(candidate) && !reserved.Contains(candidate))
+                    {
+                        copy.Name = candidate;
+                        break;
+                    }
                 }
             }
             occupied.Add(copy.Name);

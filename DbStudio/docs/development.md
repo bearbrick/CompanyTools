@@ -12,11 +12,15 @@
 | `Core/StudioStore.cs` | SQLite 初始化、参数化命令与事务共用工具 |
 | `Core/StudioStore.Authentication.cs` | 登录锁定、实时会话验证与密码修改 |
 | `Core/StudioStore.Projects.cs` | 项目保存、并发冲突、入站引用保护与导出 |
+| `Core/StudioStore.Versioning.*.cs` | 修订架构、历史查询/恢复、发布与连接部署状态 |
 | `Core/StudioStore.AccessControl.cs`、`StudioStore.Audit.cs` | 用户、角色与审计查询 |
 | `Core/SqlServerDdl*.cs` | 方言目录、结构校验、SQL 生成分别维护 |
-| `Components/Pages/Home.razor.cs`、`Home.SelectOptions.cs` | 编辑草稿状态、页面操作与选项说明 |
+| `Components/Pages/Home.razor.cs`、`Home.*.cs` | 页面编排，以及表、项目、约束、SQL、安全等分区操作 |
 | `Components/StudioSelect.razor` | 全站统一选择器及值提交边界 |
 | `wwwroot/studio-select.js`、`studio-select.css` | 浮层定位、本地搜索、键盘操作与共享外观 |
+| `Core/RelationshipDiagram.cs`、`Components/ProjectRelationshipDiagram.razor` | ER 图筛选、分层布局、SVG 关系线及表卡片渲染 |
+| `Core/ProjectFieldSearch.cs`、`Components/ProjectFieldSearch.razor` | 修订级字段搜索、同名统计、双向引用索引和顶部结果面板 |
+| `wwwroot/studio.js` | ER 画布缩放、拖动与适应视口等页面交互 |
 
 Store 使用 partial 文件组织元数据服务，公开 API 和事务边界保持集中。实际 SQL Server 读取和执行由独立的 `SqlServerCatalog`、`SqlServerTools` 负责，不在设计文档保存时隐式执行数据库命令。
 
@@ -24,6 +28,7 @@ Store 使用 partial 文件组织元数据服务，公开 API 和事务边界保
 
 - 遵循根目录 `.editorconfig`：四空格、完整控制流大括号、独立语句和统一换行。长调用参数逐行排列。
 - 模型属性、服务入口和页面操作使用中文 XML 注释。注释解释取值约束、调用目的、失败行为；权限、版本控制、事务和引用保护另有就地说明。
+- 产品项目把缺少公开 XML 注释或参数说明视为编译错误；架构检查同时限制关键编排文件重新膨胀。
 - 保存前编辑深复制草稿，服务端返回成功后更新快照；所有入口复用服务授权，不能仅靠按钮禁用实现权限控制。
 - 账号启用状态、角色权限与安全戳实时读取。项目文档、修订号与审计同事务提交。
 - 元数据 SQL 使用参数，DDL 统一转义标识符和文字。数据库同步只执行服务器保存的 DacFx 计划，必须先预览并确认目标，不接受浏览器传来的任意 SQL。
@@ -34,7 +39,11 @@ Store 使用 partial 文件组织元数据服务，公开 API 和事务边界保
 
 搜索与方向键移动在浏览器执行；仅确认选中后回传 Blazor。支持 Enter 确定、Escape 取消、Tab 继续表单、外部点击关闭。弹层自动选择上下方向，滚动外层区域或调整窗口时关闭，避免与原单元格脱离。Popover 使用浏览器顶层绘制以避免被表格滚动容器和弹窗裁切，面向当前版 Edge / Chrome。
 
-参考：[MDN Popover](https://developer.mozilla.org/en-US/docs/Web/API/Popover_API/Using)、[WAI-ARIA Combobox](https://www.w3.org/WAI/ARIA/apg/patterns/combobox/)。
+ER 图布局在服务端由纯函数基于已保存项目快照生成：引用目标位于左侧、引用方位于右侧，循环关系保持同层；模块或搜索筛选会保留一层关联上下文。浏览器只负责画布变换，不回写项目模型。逻辑关系用虚线，物理外键用实线，二者共享端点和字段定位规则。
+
+顶部字段检索同样只读取已保存项目快照，并以 `ProjectId + Revision` 为组件索引生命周期。索引在内存中为复合关系逐字段配对，同时建立正向和反向引用；结果跳转使用稳定的表、字段 ID，不依赖可能重复或被修改的名称。当前规模不需要外部全文搜索服务。
+
+完整分层、版本语义和演进边界见[产品架构说明](architecture.md)。选择器实现参考：[MDN Popover](https://developer.mozilla.org/en-US/docs/Web/API/Popover_API/Using)、[WAI-ARIA Combobox](https://www.w3.org/WAI/ARIA/apg/patterns/combobox/)。
 
 ## 验证命令
 
