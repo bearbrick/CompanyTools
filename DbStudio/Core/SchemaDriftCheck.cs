@@ -43,7 +43,7 @@ public static class SchemaDriftCheck
             && table.Name.Parts[1].Equals(scope.Name, StringComparison.OrdinalIgnoreCase);
         Add(scope.Schema, scope.Name);
         var design = project.Tables.Single(t => t.Id == scope.TableId);
-        foreach (var key in design.ForeignKeys)
+        foreach (var key in design.ForeignKeys.Where(key => !key.IsLogical))
         {
             var target = project.Tables.Single(t => t.Id == key.TargetTableId);
             Add(target.Schema, target.Name);

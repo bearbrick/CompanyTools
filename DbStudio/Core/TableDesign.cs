@@ -63,7 +63,7 @@ public class TableDesign
     public List<IndexDesign> Indexes { get; set; } = [];
 
     /// <summary>
-    /// 指向项目内数据表的外键。
+    /// 指向项目内数据表的逻辑关系或物理外键。
     /// </summary>
     public List<ForeignKeyDesign> ForeignKeys { get; set; } = [];
 

@@ -121,7 +121,7 @@
             <nav class="tabs" aria-label="表设计选项">
                 <button class="@(tab == "fields" ? "active" : "")" @onclick='() => OpenTab("fields")'>字段定义 <span>@table.Columns.Count</span></button>
                 <button class="@(tab == "indexes" ? "active" : "")" @onclick='() => OpenTab("indexes")'>索引 <span>@table.Indexes.Count</span></button>
-                <button class="@(tab == "foreign" ? "active" : "")" @onclick='() => OpenTab("foreign")'>外键关系 <span>@table.ForeignKeys.Count</span></button>
+                <button class="@(tab == "foreign" ? "active" : "")" @onclick='() => OpenTab("foreign")'>表关系 <span>@table.ForeignKeys.Count</span></button>
                 <button class="@(tab == "checks" ? "active" : "")" @onclick='() => OpenTab("checks")'>检查约束 <span>@table.Checks.Count</span></button>
                 @if (CanExport) { <button class="@(tab == "sql" ? "active" : "")" @onclick='() => OpenTab("sql")'><Icon Name="code-slash" /> SQL 预览</button> }
                 <button class="@(tab == "history" ? "active" : "")" @onclick='() => OpenTab("history")'>变更记录</button>
@@ -240,7 +240,7 @@
     @if (importPreview != null)
     {
         <div class="import-preview">
-            <div class="import-counts"><strong>@importPreview.Project.Tables.Count <small>张表</small></strong><strong>@importPreview.Project.Tables.Sum(t => t.Columns.Count) <small>个字段</small></strong><strong>@importPreview.Project.Tables.Sum(t => t.ForeignKeys.Count) <small>个外键</small></strong></div>
+            <div class="import-counts"><strong>@importPreview.Project.Tables.Count <small>张表</small></strong><strong>@importPreview.Project.Tables.Sum(t => t.Columns.Count) <small>个字段</small></strong><strong>@importPreview.Project.Tables.Sum(t => t.ForeignKeys.Count) <small>条关系</small></strong></div>
             @if (importPreview.Errors.Count > 0)
             {
                 <p class="import-problems" role="alert">发现 @importPreview.Errors.Count 项问题，请修正备份后重新预览。</p>
@@ -249,7 +249,7 @@
             else
             {
                 <p class="import-ready" role="status"><Icon Name="check-circle" /> 结构检查通过，可以导入</p>
-                <div class="import-tables"><table class="list-table"><thead><tr><th>表名称</th><th>字段</th><th>外键</th></tr></thead><tbody>
+                <div class="import-tables"><table class="list-table"><thead><tr><th>表名称</th><th>字段</th><th>关系</th></tr></thead><tbody>
                     @foreach (var item in importPreview.Project.Tables)
                     {
                         <tr><td>@item.Label<small class="mono">@item.Schema.@item.Name</small></td><td>@item.Columns.Count</td><td>@item.ForeignKeys.Count</td></tr>
@@ -267,7 +267,7 @@
         <Icon Name="@(designIssues.Count == 0 ? "check-circle" : "shield-check")" />
         <div>
             <h3>@(designIssues.Count == 0 ? "结构检查通过" : $"发现 {designIssues.Count} 项需要处理的问题")</h3>
-            <p>@table.Schema.@table.Name · @table.Columns.Count 个字段<br />检查字段定义名是否填写、字段结构、索引、外键、CHECK，以及其他表对当前表的引用。</p>
+            <p>@table.Schema.@table.Name · @table.Columns.Count 个字段<br />检查字段定义名是否填写、字段结构、索引、表关系、CHECK，以及其他表对当前表的引用。</p>
         </div>
     </div>
     @if (designIssues.Count > 0)

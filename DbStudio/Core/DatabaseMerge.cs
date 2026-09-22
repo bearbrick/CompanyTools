@@ -12,8 +12,11 @@ public record ReverseTableChange(string SourceId, TableDesign Table, string Stat
 /// <summary>只读反推预览；未落库的设计表保留，不作为待导入项。</summary>
 public record ReversePreview(List<ReverseTableChange> Tables, int DesignOnlyCount)
 {
+    /// <summary>实际库与当前设计存在差异的表数量。</summary>
     public int ChangedCount => Tables.Count(t => t.Status == "有变化");
+    /// <summary>仅存在于实际数据库的表数量。</summary>
     public int NewCount => Tables.Count(t => t.Status == "数据库独有");
+    /// <summary>与当前设计结构一致的表数量。</summary>
     public int UnchangedCount => Tables.Count(t => t.Status == "无变化");
 }
 
@@ -45,14 +48,36 @@ public static class DatabaseMerge
                 foreach (var c in table.Columns)
                 {
                     var previous = old.Columns.FirstOrDefault(p => p.Name.Equals(c.Name, StringComparison.OrdinalIgnoreCase));
-                    if (previous == null) continue;
+                    if (previous == null)
+                    {
+                        continue;
+                    }
+
                     c.Id = previous.Id;
                     c.Label = previous.Label;
                     c.Comment = previous.Comment;
                     c.InputLimit = previous.InputLimit;
                 }
             }
-            foreach (var fk in table.ForeignKeys) fk.TargetTableId = ids[fk.TargetTableId];
+            foreach (var fk in table.ForeignKeys)
+            {
+                fk.TargetTableId = ids[fk.TargetTableId];
+            }
+
+            if (old != null)
+            {
+                // 数据库快照只能反映物理约束。保留手工维护的逻辑关系，除非同名或同端点的
+                // 物理外键已经出现在实际库中，此时让预览明确表现为关系类型发生变化。
+                foreach (var logical in old.ForeignKeys.Where(key => key.IsLogical))
+                {
+                    var samePhysical = table.ForeignKeys.Any(key => key.Name.Equals(logical.Name, StringComparison.OrdinalIgnoreCase)
+                        || SameRelationship(key, logical));
+                    if (!samePhysical)
+                    {
+                        table.ForeignKeys.Add(ModelJson.Clone(logical));
+                    }
+                }
+            }
             var differences = old == null ? new List<ReverseDifference>() : Differences(old, table);
             result.Add(new(sourceId, table, old == null ? "数据库独有" : differences.Count == 0 ? "无变化" : "有变化", differences));
         }
@@ -63,14 +88,23 @@ public static class DatabaseMerge
     public static DesignProject Apply(DesignProject project, ReversePreview preview, IReadOnlyCollection<string>? selectedIds = null)
     {
         if (selectedIds != null && selectedIds.Any(id => !preview.Tables.Any(t => t.SourceId == id)))
+        {
             throw new InvalidOperationException("所选表不属于本次反推预览，请重新读取。");
+        }
+
         var merged = ModelJson.Clone(project);
         foreach (var item in preview.Tables.Where(t => t.Status != "无变化" && (selectedIds == null || selectedIds.Contains(t.SourceId))))
         {
             var table = ModelJson.Clone(item.Table);
             var index = merged.Tables.FindIndex(t => t.Id == table.Id);
-            if (index < 0) merged.Tables.Add(table);
-            else merged.Tables[index] = table;
+            if (index < 0)
+            {
+                merged.Tables.Add(table);
+            }
+            else
+            {
+                merged.Tables[index] = table;
+            }
         }
         return merged;
     }
@@ -80,36 +114,66 @@ public static class DatabaseMerge
         var result = new List<ReverseDifference>();
         void Add(string obj, string property, string before, string after)
         {
-            if (before != after) result.Add(new(obj, property, before, after));
+            if (before != after)
+            {
+                result.Add(new(obj, property, before, after));
+            }
         }
         foreach (var c in old.Columns)
+        {
             if (!table.Columns.Any(n => n.Name.Equals(c.Name, StringComparison.OrdinalIgnoreCase)))
+            {
                 result.Add(new(c.Name, "移除字段", SqlServerDdl.DataType(c), "数据库中不存在"));
+            }
+        }
+
         foreach (var c in table.Columns)
         {
             var previous = old.Columns.FirstOrDefault(p => p.Name.Equals(c.Name, StringComparison.OrdinalIgnoreCase));
-            if (previous == null) { result.Add(new(c.Name, "新增字段", "设计中不存在", SqlServerDdl.DataType(c))); continue; }
+            if (previous == null)
+            {
+                result.Add(new(c.Name, "新增字段", "设计中不存在", SqlServerDdl.DataType(c)));
+                continue;
+            }
             var before = ColumnProperties(previous);
-            foreach (var pair in ColumnProperties(c)) Add(c.Name, pair.Key, before[pair.Key], pair.Value);
+            foreach (var pair in ColumnProperties(c))
+            {
+                Add(c.Name, pair.Key, before[pair.Key], pair.Value);
+            }
         }
         // 字段顺序会改变编辑器中的排列，明确展示，不能悄悄重排。
         if (old.Columns.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(table.Columns.Select(c => c.Name)))
+        {
             Add("表", "字段顺序", string.Join(", ", old.Columns.Select(c => c.Name)), string.Join(", ", table.Columns.Select(c => c.Name)));
+        }
+
         Add("表", "主键", PrimaryKey(old), PrimaryKey(table));
         CompareObjects("索引", old.Indexes, table.Indexes, i => i.Name, i => JsonSerializer.Serialize(new { i.Name, Columns = Names(i.Columns), Descending = Names(i.DescendingColumns, true), Include = Names(i.Include, true), i.Unique, i.IsConstraint, i.Clustered, Filter = Tokens(i.Filter) }));
-        CompareObjects("外键", old.ForeignKeys, table.ForeignKeys, f => f.Name, f => JsonSerializer.Serialize(new { f.Name, Columns = Names(f.Columns), f.TargetTableId, TargetColumns = Names(f.TargetColumns), f.OnDelete, f.OnUpdate }));
+        CompareObjects("表关系", old.ForeignKeys, table.ForeignKeys, f => f.Name, f => JsonSerializer.Serialize(new { f.Name, f.IsLogical, Columns = Names(f.Columns), f.TargetTableId, TargetColumns = Names(f.TargetColumns), f.OnDelete, f.OnUpdate }));
         CompareObjects("检查约束", old.Checks, table.Checks, c => c.Name, c => Tokens(c.Expression));
         return result;
 
         void CompareObjects<T>(string kind, List<T> before, List<T> after, Func<T, string> name, Func<T, string> value)
         {
             foreach (var item in before)
-                if (!after.Any(n => name(n).Equals(name(item), StringComparison.OrdinalIgnoreCase))) result.Add(new(name(item), "移除" + kind, value(item), "数据库中不存在"));
+            {
+                if (!after.Any(n => name(n).Equals(name(item), StringComparison.OrdinalIgnoreCase)))
+                {
+                    result.Add(new(name(item), "移除" + kind, value(item), "数据库中不存在"));
+                }
+            }
+
             foreach (var item in after)
             {
                 var previous = before.FindIndex(p => name(p).Equals(name(item), StringComparison.OrdinalIgnoreCase));
-                if (previous < 0) result.Add(new(name(item), "新增" + kind, "设计中不存在", value(item)));
-                else Add(name(item), kind, value(before[previous]), value(item));
+                if (previous < 0)
+                {
+                    result.Add(new(name(item), "新增" + kind, "设计中不存在", value(item)));
+                }
+                else
+                {
+                    Add(name(item), kind, value(before[previous]), value(item));
+                }
             }
         }
     }
@@ -129,18 +193,45 @@ public static class DatabaseMerge
     private static string PrimaryKey(TableDesign t)
     {
         var keys = t.Columns.Where(c => c.PrimaryKeyOrder > 0).OrderBy(c => c.PrimaryKeyOrder).ToList();
-        if (keys.Count == 0) return "无";
-        return JsonSerializer.Serialize(new { Name = t.PrimaryKeySystemNamed ? "系统自动命名" : t.PrimaryKeyName == "" ? "PK_" + t.Name : t.PrimaryKeyName, Columns = string.Join(",", keys.Select(c => c.Name)), Descending = Names(t.PrimaryKeyDescendingColumns, true), Clustered = t.PrimaryKeyClustered ?? !t.Indexes.Any(i => i.Clustered) });
+        if (keys.Count == 0)
+        {
+            return "无";
+        }
+
+        return JsonSerializer.Serialize(new
+        {
+            Name = t.PrimaryKeySystemNamed ? "系统自动命名" : t.PrimaryKeyName == "" ? "PK_" + t.Name : t.PrimaryKeyName,
+            Columns = string.Join(",", keys.Select(c => c.Name)),
+            Descending = Names(t.PrimaryKeyDescendingColumns, true),
+            Clustered = t.PrimaryKeyClustered ?? !t.Indexes.Any(i => i.Clustered)
+        });
     }
 
     private static string Names(string value, bool unordered = false) => string.Join(",", unordered ? SqlServerDdl.Names(value).OrderBy(n => n, StringComparer.OrdinalIgnoreCase) : SqlServerDdl.Names(value));
 
+    private static bool SameRelationship(ForeignKeyDesign left, ForeignKeyDesign right) =>
+        left.TargetTableId == right.TargetTableId
+        && Names(left.Columns).Equals(Names(right.Columns), StringComparison.OrdinalIgnoreCase)
+        && Names(left.TargetColumns).Equals(Names(right.TargetColumns), StringComparison.OrdinalIgnoreCase);
+
     private static string Expression(string value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return "";
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "";
+        }
+
         var expression = new TSql160Parser(true).ParseExpression(new StringReader(value), out var errors);
-        if (errors.Count > 0) return Tokens(value);
-        while (expression is ParenthesisExpression parenthesis) expression = parenthesis.Expression;
+        if (errors.Count > 0)
+        {
+            return Tokens(value);
+        }
+
+        while (expression is ParenthesisExpression parenthesis)
+        {
+            expression = parenthesis.Expression;
+        }
+
         new Sql160ScriptGenerator().GenerateScript(expression, out var normalized);
         return Tokens(normalized);
     }

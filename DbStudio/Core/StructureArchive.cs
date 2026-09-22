@@ -103,12 +103,13 @@ public static class StructureArchiveText
         return column.PrimaryKeyOrder > 0 ? "●" : "";
     }
 
-    /// <summary>字段行内只用实心圆标识参与任一外键的字段，留白表示否。</summary>
+    /// <summary>字段行内用实心圆表示物理外键、空心圆表示逻辑关系；两者同时存在时并列显示。</summary>
     public static string ForeignKeyMarker(DesignProject project, TableDesign table, ColumnDesign column)
     {
         _ = project;
-        return table.ForeignKeys.Any(key => SqlServerDdl.Names(key.Columns)
-            .Contains(column.Name, StringComparer.OrdinalIgnoreCase)) ? "●" : "";
+        var relations = table.ForeignKeys.Where(key => SqlServerDdl.Names(key.Columns)
+            .Contains(column.Name, StringComparer.OrdinalIgnoreCase)).ToList();
+        return (relations.Any(key => !key.IsLogical) ? "●" : "") + (relations.Any(key => key.IsLogical) ? "○" : "");
     }
 
     /// <summary>索引作为表级结构单独排列在字段表下方。</summary>
@@ -146,7 +147,9 @@ public static class StructureArchiveText
         {
             var target = project.Tables.FirstOrDefault(t => t.Id == key.TargetTableId);
             var targetName = target == null ? "[目标表缺失，待核验]" : $"{target.Schema}.{target.Name}";
-            yield return $"外键：{key.Name}；({key.Columns}) → {targetName} ({key.TargetColumns})；删除：{ActionName(key.OnDelete)}；更新：{ActionName(key.OnUpdate)}。";
+            yield return key.IsLogical
+                ? $"逻辑关系：{key.Name}；({key.Columns}) → {targetName} ({key.TargetColumns})；仅用于设计，不生成数据库约束。"
+                : $"物理外键：{key.Name}；({key.Columns}) → {targetName} ({key.TargetColumns})；删除：{ActionName(key.OnDelete)}；更新：{ActionName(key.OnUpdate)}。";
         }
         foreach (var check in table.Checks)
         {

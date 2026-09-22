@@ -27,7 +27,11 @@ internal static class SharePageChecks
                 new() { Name = "Total", Type = "int", Computed = "[Id] * 2", Persisted = true }
             ],
             Indexes = [new() { Name = "IX_Child_Name", Columns = "Name,Id", DescendingColumns = "Name" }],
-            ForeignKeys = [new() { Name = "FK_Child_Parent", Columns = "Id", TargetTableId = parent.Id, TargetColumns = "Id" }]
+            ForeignKeys =
+            [
+                new() { Name = "FK_Child_Parent", Columns = "Id", TargetTableId = parent.Id, TargetColumns = "Id" },
+                new() { Name = "FK_Child_Parent_Logical", IsLogical = true, Columns = "Name", TargetTableId = parent.Id, TargetColumns = "Name" }
+            ]
         };
         var project = new DesignProject { Name = "匿名评审", Tables = [parent, child] };
         using var services = new ServiceCollection().AddLogging().BuildServiceProvider();
@@ -54,6 +58,7 @@ internal static class SharePageChecks
         check("Both share views retain index order and collation", new[] { tableHtml, cardsHtml }.All(html => html.Contains("[Name] DESC, [Id] ASC") && html.Contains("Latin1_General_100_CI_AS")));
         check("Share cards retain persisted computation", cardsHtml.Contains("[Id] * 2") && cardsHtml.Contains("[持久化]"));
         check("Share foreign key clears search while view switch retains it", tableHtml.Contains("?table=parent&view=table&q=\"") && tableHtml.Contains("?table=child&view=cards&q=Child"));
+        check("Share distinguishes logical relationships from physical foreign keys", tableHtml.Contains("逻辑关系") && tableHtml.Contains("物理外键") && tableHtml.Contains("不生成数据库约束"));
         var parentHtml = WebUtility.HtmlDecode(await Render("table", "parent", ""));
         check("Share foreign key destination displays referenced table", parentHtml.Contains("<h2>父表</h2>"));
         check("Share encodes untrusted comments and has no editing runtime", rawTable.Contains("&lt;script&gt;") && !rawTable.Contains("<script") && !rawTable.Contains("_framework/blazor") && !rawTable.Contains("<textarea"));

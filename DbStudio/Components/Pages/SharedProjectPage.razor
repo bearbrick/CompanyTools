@@ -59,11 +59,11 @@
             {
                 <article><strong>@index.Name</strong><p><code>@OrderedKeys(index.Columns, index.DescendingColumns)</code> · @(index.Unique ? "唯一" : "普通") · @(index.Clustered ? "聚集" : "非聚集") @(index.IsConstraint ? " · 约束" : "")</p>@if (index.Include != "") { <p>包含列：@index.Include</p> }@if (index.Filter != "") { <code>@index.Filter</code> }</article>
             }
-            <h3>外键关系 <small>@table.ForeignKeys.Count</small></h3>
+            <h3>表关系 <small>@table.ForeignKeys.Count</small></h3>
             @foreach (var fk in table.ForeignKeys)
             {
                 var target = Project.Tables.FirstOrDefault(t => t.Id == fk.TargetTableId);
-                <article><strong>@fk.Name</strong><p><code>@fk.Columns</code> → <a href="@Link(fk.TargetTableId, clearSearch: true)">@target?.Schema.@target?.Name</a> (<code>@fk.TargetColumns</code>)</p><p class="muted">删除：@fk.OnDelete · 更新：@fk.OnUpdate</p></article>
+                <article><strong>@fk.Name <span class="badge">@(fk.IsLogical ? "逻辑关系" : "物理外键")</span></strong><p><code>@fk.Columns</code> → <a href="@Link(fk.TargetTableId, clearSearch: true)">@target?.Schema.@target?.Name</a> (<code>@fk.TargetColumns</code>)</p>@if (fk.IsLogical) { <p class="muted">仅用于设计，不生成数据库约束</p> } else { <p class="muted">删除：@fk.OnDelete · 更新：@fk.OnUpdate</p> }</article>
             }
             <h3>检查约束 <small>@table.Checks.Count</small></h3>
             @foreach (var check in table.Checks) { <article><strong>@check.Name</strong><p><code>@check.Expression</code></p></article> }

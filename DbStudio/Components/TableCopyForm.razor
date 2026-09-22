@@ -1,7 +1,7 @@
 @* 表基本信息使用独立模型，关闭窗口不会修改当前表草稿。 *@
 <form @onsubmit="SubmitAsync" @onsubmit:preventDefault>
     <p class="muted">来源：<span class="mono">@Source.Schema.@Source.Name</span> · @Source.Columns.Count 个字段</p>
-    <p class="muted">字段顺序及全部配置、索引、外键和检查约束一并复制。约束自动重新命名，自引用外键指向新表。</p>
+    <p class="muted">字段顺序及全部配置、索引、表关系和检查约束一并复制。名称自动重新生成，自引用关系指向新表。</p>
     @if (HasUnsavedChanges)
     {
         <p class="settings-notice" role="status">副本包含当前未保存的编辑；创建后原表仍保留其已保存版本。</p>

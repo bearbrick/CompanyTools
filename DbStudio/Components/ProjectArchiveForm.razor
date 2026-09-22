@@ -3,7 +3,7 @@
 
 <form @onsubmit="DownloadAsync" @onsubmit:preventDefault>
     <p class="muted">@Project.Name · @Project.Tables.Count 张表 · @Project.Tables.Sum(t => t.Columns.Count) 个字段 · 已保存修订 r@(Project.Revision)</p>
-    <p class="muted">全文采用 A4 横版。中文名紧跟字段名，主键和外键以实心圆标识，索引独立排列在字段表下方。</p>
+    <p class="muted">全文采用 A4 横版。中文名紧跟字段名；关系栏以 ● 表示物理外键、○ 表示逻辑关系，索引独立排列在字段表下方。</p>
     @if (HasUnsavedChanges)
     {
         <p class="settings-notice" role="status">当前有未保存修改，本次 PDF 仅包含已保存内容。要包含修改，请先关闭窗口并保存设计。</p>

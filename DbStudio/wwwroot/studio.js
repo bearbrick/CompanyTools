@@ -12,6 +12,7 @@ window.studio = {
         else if (items.length && !e.shiftKey && document.activeElement === items.at(-1)) { e.preventDefault(); items[0].focus(); }
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); document.activeElement?.blur(); window.studio.ref.invokeMethodAsync('ShortcutSave'); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); document.querySelector('[aria-label="字段与引用快速检索"]')?.focus(); }
       if (e.key === '/' && !e.target.matches('input,textarea,select')) { e.preventDefault(); document.querySelector('[aria-label="搜索表名或字段"]')?.focus(); }
       if (e.key === 'Enter' && e.target.closest('.field-grid') && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') {
         e.preventDefault();
@@ -88,5 +89,70 @@ window.studio = {
     input.remove();
     previous?.focus();
     if (!copied) throw new Error('复制失败，请手动选择并复制内容。');
+  },
+  erStates: new WeakMap(),
+  erDiagramInit(element, reset) {
+    if (!element) return;
+    const stage = element.querySelector('.er-stage');
+    if (!stage) return;
+    let state = window.studio.erStates.get(element);
+    if (!state) {
+      state = { x: 0, y: 0, scale: 1, stage, dragging: false, moved: false };
+      window.studio.erStates.set(element, state);
+      const apply = () => { if (state.stage) state.stage.style.transform = `translate(${state.x}px,${state.y}px) scale(${state.scale})`; };
+      state.apply = apply;
+      element.addEventListener('pointerdown', event => {
+        if (event.button !== 0 || event.target.closest('.er-node,button,input,select')) return;
+        state.dragging = true; state.moved = false; state.startX = event.clientX; state.startY = event.clientY; state.originX = state.x; state.originY = state.y;
+        element.classList.add('panning');
+        element.setPointerCapture(event.pointerId);
+      });
+      element.addEventListener('pointermove', event => {
+        if (!state.dragging) return;
+        const dx = event.clientX - state.startX; const dy = event.clientY - state.startY;
+        state.moved ||= Math.abs(dx) + Math.abs(dy) > 3;
+        state.x = state.originX + dx; state.y = state.originY + dy; apply();
+      });
+      const finish = event => {
+        if (!state.dragging) return;
+        state.dragging = false; element.classList.remove('panning');
+        if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId);
+      };
+      element.addEventListener('pointerup', finish);
+      element.addEventListener('pointercancel', finish);
+      element.addEventListener('wheel', event => {
+        event.preventDefault();
+        const bounds = element.getBoundingClientRect();
+        const px = event.clientX - bounds.left; const py = event.clientY - bounds.top;
+        const previous = state.scale;
+        const next = Math.min(1.8, Math.max(0.2, previous * (event.deltaY > 0 ? 0.9 : 1.1)));
+        state.x = px - (px - state.x) * next / previous;
+        state.y = py - (py - state.y) * next / previous;
+        state.scale = next; apply();
+      }, { passive: false });
+    }
+    state.stage = stage;
+    if (reset) window.studio.erDiagramFit(element);
+    else state.apply();
+  },
+  erDiagramFit(element) {
+    const state = window.studio.erStates.get(element); if (!state) return;
+    const width = Number(element.dataset.diagramWidth) || state.stage.offsetWidth;
+    const height = Number(element.dataset.diagramHeight) || state.stage.offsetHeight;
+    const padding = 34;
+    state.scale = Math.min(1, Math.max(0.2, Math.min((element.clientWidth - padding * 2) / width, (element.clientHeight - padding * 2) / height)));
+    state.x = (element.clientWidth - width * state.scale) / 2;
+    state.y = (element.clientHeight - height * state.scale) / 2;
+    state.apply();
+  },
+  erDiagramZoom(element, delta) {
+    const state = window.studio.erStates.get(element); if (!state) return;
+    const previous = state.scale;
+    const next = Math.min(1.8, Math.max(0.2, previous + delta));
+    const px = element.clientWidth / 2; const py = element.clientHeight / 2;
+    state.x = px - (px - state.x) * next / previous;
+    state.y = py - (py - state.y) * next / previous;
+    state.scale = next;
+    state.apply();
   }
 };

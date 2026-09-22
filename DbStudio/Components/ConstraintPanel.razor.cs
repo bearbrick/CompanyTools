@@ -8,13 +8,13 @@ public partial class ConstraintPanel
 {
     /// <summary>当前表的编辑草稿。</summary>
     [Parameter, EditorRequired] public TableDesign Table { get; set; } = default!;
-    /// <summary>当前项目，用于显示外键目标。</summary>
+    /// <summary>当前项目，用于显示关系目标。</summary>
     [Parameter, EditorRequired] public DesignProject Project { get; set; } = default!;
     /// <summary>当前面板类型：indexes、foreign 或 checks。</summary>
     [Parameter] public string Kind { get; set; } = "indexes";
     /// <summary>是否允许修改草稿。</summary>
     [Parameter] public bool CanEdit { get; set; }
-    /// <summary>外键引用表选项。</summary>
+    /// <summary>关系引用表选项。</summary>
     [Parameter] public List<SelectOption> TableOptions { get; set; } = [];
     /// <summary>当前表的字段选项。</summary>
     [Parameter] public List<SelectOption> LocalColumnOptions { get; set; } = [];
@@ -36,7 +36,7 @@ public partial class ConstraintPanel
         await NotifyChangedAsync();
     }
 
-    /// <summary>仅从草稿移除指定外键。</summary>
+    /// <summary>仅从草稿移除指定表关系。</summary>
     private async Task RemoveForeignKeyAsync(ForeignKeyDesign key)
     {
         if (!CanEdit) { return; }

@@ -18,9 +18,9 @@ public static partial class SqlServerDdl
         {
             script.Append(GenerateCore(project, table, forModel: true, includeForeignKeys: false));
         }
-        if (project.Tables.Any(t => t.ForeignKeys.Count > 0))
+        if (project.Tables.Any(t => t.ForeignKeys.Any(key => !key.IsLogical)))
         {
-            script.AppendLine("-- 所有表及唯一键建立完成后，再创建外键。\n");
+            script.AppendLine("-- 所有表及唯一键建立完成后，再创建物理外键。逻辑关系仅保存在设计中。\n");
             foreach (var table in project.Tables) { AppendForeignKeys(script, project, table); }
         }
         return script.ToString();
@@ -30,7 +30,7 @@ public static partial class SqlServerDdl
     private static void AppendForeignKeys(StringBuilder script, DesignProject project, TableDesign table)
     {
         var name = Q(table.Schema) + "." + Q(table.Name);
-        foreach (var key in table.ForeignKeys)
+        foreach (var key in table.ForeignKeys.Where(key => !key.IsLogical))
         {
             var target = project.Tables.First(t => t.Id == key.TargetTableId);
             script.AppendLine($"ALTER TABLE {name} ADD CONSTRAINT {Q(key.Name)} FOREIGN KEY ({List(key.Columns)}) REFERENCES {Q(target.Schema)}.{Q(target.Name)} ({List(key.TargetColumns)}) ON DELETE {key.OnDelete} ON UPDATE {key.OnUpdate};\nGO\n");

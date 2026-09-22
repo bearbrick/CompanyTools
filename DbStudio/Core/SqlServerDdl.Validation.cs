@@ -115,21 +115,27 @@ public static partial class SqlServerDdl
         foreach (var fk in table.ForeignKeys)
         {
             constraintNames.Add(fk.Name);
-            Need(Identifier(fk.Name), "外键名称无效。");
+            Need(Identifier(fk.Name), "关系名称无效。");
             var target = project.Tables.FirstOrDefault(t => t.Id == fk.TargetTableId);
             var local = Names(fk.Columns);
             var remote = Names(fk.TargetColumns);
             Need(LocalColumns(fk.Columns), $"{fk.Name}：本表字段无效。");
             Need(target != null && local.Length > 0 && local.Length == remote.Length, $"{fk.Name}：请选择引用表，两侧字段数量应一致。");
-            Need(Actions.Contains(fk.OnDelete) && Actions.Contains(fk.OnUpdate), $"{fk.Name}：外键动作无效。");
+            if (!fk.IsLogical)
+            {
+                Need(Actions.Contains(fk.OnDelete) && Actions.Contains(fk.OnUpdate), $"{fk.Name}：外键动作无效。");
+            }
             if (target != null)
             {
                 bool existing = remote.All(n => target.Columns.Any(c => c.Name.Equals(n, StringComparison.OrdinalIgnoreCase)));
                 Need(existing, $"{fk.Name}：引用字段不存在。");
                 var targetPk = target.Columns.Where(c => c.PrimaryKeyOrder > 0).OrderBy(c => c.PrimaryKeyOrder).Select(c => c.Name);
-                Need(
-                    remote.SequenceEqual(targetPk, StringComparer.OrdinalIgnoreCase) || target.Indexes.Any(ix => ix.Unique && ix.Filter == "" && remote.SequenceEqual(Names(ix.Columns), StringComparer.OrdinalIgnoreCase)),
-                    $"{fk.Name}：引用字段必须匹配目标主键或未过滤的唯一键（含顺序）。");
+                if (!fk.IsLogical)
+                {
+                    Need(
+                        remote.SequenceEqual(targetPk, StringComparer.OrdinalIgnoreCase) || target.Indexes.Any(ix => ix.Unique && ix.Filter == "" && remote.SequenceEqual(Names(ix.Columns), StringComparer.OrdinalIgnoreCase)),
+                        $"{fk.Name}：引用字段必须匹配目标主键或未过滤的唯一键（含顺序）。");
+                }
                 if (existing && LocalColumns(fk.Columns) && local.Length == remote.Length)
                 {
                     for (int i = 0; i < local.Length; i++)
@@ -139,12 +145,12 @@ public static partial class SqlServerDdl
                         Need(
                             a.Type == b.Type && (a.Type is not ("decimal" or "numeric") || a.Precision == b.Precision && a.Scale == b.Scale) && a.Collation == b.Collation,
                             $"{fk.Name}：{a.Name} 与引用字段类型／精度／排序规则不匹配。");
-                        if (fk.OnDelete == "SET NULL" || fk.OnUpdate == "SET NULL")
+                        if (!fk.IsLogical && (fk.OnDelete == "SET NULL" || fk.OnUpdate == "SET NULL"))
                         {
                             Need(a.Nullable, $"{fk.Name}：SET NULL 要求本表字段允许空值。");
                         }
 
-                        if (fk.OnDelete == "SET DEFAULT" || fk.OnUpdate == "SET DEFAULT")
+                        if (!fk.IsLogical && (fk.OnDelete == "SET DEFAULT" || fk.OnUpdate == "SET DEFAULT"))
                         {
                             Need(a.Nullable || a.Default != "", $"{fk.Name}：SET DEFAULT 要求字段有默认值或允许空值。");
                         }

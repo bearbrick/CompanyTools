@@ -28,6 +28,6 @@ public partial class ProjectOverview
         }).ToList();
         Metrics = [("数据表", Project.Tables.Count, "张表"), ("字段", Project.Tables.Sum(t => t.Columns.Count), "个字段"),
             ("业务模块", Modules.Count, "个模块"), ("索引与唯一约束", Project.Tables.Sum(t => t.Indexes.Count), "项定义 · 不含主键"),
-            ("外键关系", Project.Tables.Sum(t => t.ForeignKeys.Count), "条关系"), ("检查约束", Project.Tables.Sum(t => t.Checks.Count), "项约束")];
+            ("表关系", Project.Tables.Sum(t => t.ForeignKeys.Count), $"逻辑 {Project.Tables.Sum(t => t.ForeignKeys.Count(key => key.IsLogical))} · 物理 {Project.Tables.Sum(t => t.ForeignKeys.Count(key => !key.IsLogical))}"), ("检查约束", Project.Tables.Sum(t => t.Checks.Count), "项约束")];
     }
 }

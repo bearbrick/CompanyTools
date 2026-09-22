@@ -140,12 +140,12 @@ public sealed class StructureArchivePdf
             CompactSection("二、归档范围与依据");
             FormalTable(["项目", "内容"], [132, Width - 132],
             [
-                ["归档范围", $"{archive.Project.Tables.Count} 张表、{archive.Project.Tables.Sum(t => t.Columns.Count)} 个字段；包含主键、索引、外键、检查约束和设计说明。"],
+                ["归档范围", $"{archive.Project.Tables.Count} 张表、{archive.Project.Tables.Sum(t => t.Columns.Count)} 个字段；包含主键、索引、物理外键、逻辑关系、检查约束和设计说明。"],
                 ["结构来源", "DB Studio 已保存的项目设计。本次未连接实际数据库；设计与实际环境的一致性留待核验。"],
                 ["范围说明", "不含业务数据、账号和连接配置；视图、过程、函数等未纳入设计器的对象不在本文件归档范围。"]
             ], size: 8.3, padding: 4.5, bottomGap: 4);
             CompactSection("三、阅读说明");
-            Paragraph("全文采用 A4 横版。正文按模块连续排列，字段名后紧邻中文定义名，主键与外键以实心圆在对应字段行标识，索引单独列于字段表下；长表续页重复表名和表头，可通过 PDF 书签定位数据表。", 8.3, padding: 3);
+            Paragraph("全文采用 A4 横版。正文按模块连续排列，字段名后紧邻中文定义名；关系栏以实心圆表示物理外键、空心圆表示逻辑关系，索引单独列于字段表下；长表续页重复表名和表头，可通过 PDF 书签定位数据表。", 8.3, padding: 3);
         }
 
         /// <summary>生成可见目录；页码在正文排版完成后回填，书签继续用于电子导航。</summary>
@@ -201,7 +201,7 @@ public sealed class StructureArchivePdf
             void Header(bool continued)
             {
                 Paragraph($"{number:00}  {StructureArchiveText.TableTitle(table)}{(continued ? "（续）" : "")}", 10, true, background: Heading);
-                Row(["字段名", "中文名", "类型", "空值", "默认 / 生成", "主键", "外键", "说明"], ColumnWidths, 8, true, Pale, padding: 3, centeredCells: CenteredKeyColumns);
+                Row(["字段名", "中文名", "类型", "空值", "默认 / 生成", "主键", "关系", "说明"], ColumnWidths, 8, true, Pale, padding: 3, centeredCells: CenteredKeyColumns);
             }
             void Repeat() => Header(true);
             Ensure(105);
@@ -218,7 +218,7 @@ public sealed class StructureArchivePdf
                 NewPage();
                 Paragraph($"{number:00}  {StructureArchiveText.TableTitle(table)}（续）", 10, true, background: Heading);
             }
-            Row(["字段名", "中文名", "类型", "空值", "默认 / 生成", "主键", "外键", "说明"], ColumnWidths, 8, true, Pale, padding: 3, centeredCells: CenteredKeyColumns);
+            Row(["字段名", "中文名", "类型", "空值", "默认 / 生成", "主键", "关系", "说明"], ColumnWidths, 8, true, Pale, padding: 3, centeredCells: CenteredKeyColumns);
             foreach (var column in table.Columns)
             {
                 var generation = StructureArchiveText.Generation(column);

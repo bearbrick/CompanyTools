@@ -2,6 +2,7 @@
 .sidebar .project-home-entry{width:100%;display:flex;align-items:center;gap:9px;margin:0 0 18px;padding:11px 13px;border:1px solid #dfe8f5;border-radius:6px;background:white;color:#5e7697;font-size:13px;text-align:left}
 .sidebar .project-home-entry.active{background:#eaf1ff;color:#1858dc;border-color:#d4e2fb}
 .main-content.overview-content{overflow:hidden}
+.main-content.diagram-content{overflow:hidden}
 
 /* 菜单由各自按钮定位，不依赖用户名长度、权限按钮或窗口宽度的固定偏移。 */
 .header-menu{position:relative;flex-shrink:0}

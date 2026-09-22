@@ -21,6 +21,12 @@
 .foreign-editor { border-left-color: #699e99; }
 .foreign-editor .constraint-header { background: #edf5f4; }
 .foreign-editor .form-grid { grid-template-columns: 1fr 1.5fr 1fr 1fr 1fr; }
+.foreign-editor.logical-relationship { border-left-color: #8c78b8; }
+.foreign-editor.logical-relationship .constraint-header { background: #f2eff9; }
+.foreign-editor.logical-relationship .constraint-kind { color: #684d98; border-color: #d9cfeb; background: #fbf9ff; }
+.foreign-editor.logical-relationship .form-grid { grid-template-columns: 1fr 1.5fr 1fr; }
+.relationship-mode { padding: 8px 12px!important; border-bottom: 1px solid #edf1f5; background: #fff; }
+.relationship-mode label { font-size: 12px!important; color: #405777!important; }
 .relationship-label { margin: 0; padding: 6px 12px; background: #fafcfd; border-bottom: 1px solid #edf1f5; gap: 8px; font-size: 11px; overflow-wrap: anywhere; }
 .relationship-label span { min-width: 0; }
 .constraint-editor ::deep .select-trigger { min-height: 32px; height: 32px; padding: 5px 8px; font-size: 12px; }
@@ -32,9 +38,11 @@
 @container (max-width: 1000px) {
     .constraint-editor .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .foreign-editor .form-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .foreign-editor.logical-relationship .form-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @container (max-width: 600px) {
     .constraint-editor .form-grid { grid-template-columns: minmax(0, 1fr); }
+    .foreign-editor.logical-relationship .form-grid { grid-template-columns: minmax(0, 1fr); }
     .constraint-header { gap: 4px; }
     .constraint-number { min-width: 18px; }
     .relationship-label { flex-wrap: wrap; }

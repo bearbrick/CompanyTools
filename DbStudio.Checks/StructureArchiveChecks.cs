@@ -17,7 +17,7 @@ internal static class StructureArchiveChecks
             Columns =
             [
                 new() { Name = "Id", Label = "部门标识", Type = "int", Nullable = false, PrimaryKeyOrder = 1 },
-                new() { Name = "Name", Label = "部门名称", Type = "nvarchar", Length = "80", Nullable = false }
+                new() { Name = "Name", Label = "部门名称", Type = "nvarchar", Length = "80", Nullable = false, Collation = "Latin1_General_100_CI_AS" }
             ]
         };
         project = store.SaveLabeledTable(admin, project.Id, project.Revision, department);
@@ -41,7 +41,11 @@ internal static class StructureArchiveChecks
                 new() { Name = "CreatedAt", Label = "创建时间", Type = "datetime2", TemporalScale = 3, Nullable = false, Default = "sysdatetime()" },
                 new() { Name = "ComputedId", Label = "派生标识", Computed = "[Id] * 2", Persisted = true }
             ],
-            ForeignKeys = [new() { Name = "FK_Employee_Department", Columns = "DepartmentId", TargetTableId = department.Id, TargetColumns = "Id", OnDelete = "SET NULL" }],
+            ForeignKeys =
+            [
+                new() { Name = "FK_Employee_Department", Columns = "DepartmentId", TargetTableId = department.Id, TargetColumns = "Id", OnDelete = "SET NULL" },
+                new() { Name = "FK_Employee_Department_Logical", IsLogical = true, Columns = "Code", TargetTableId = department.Id, TargetColumns = "Name" }
+            ],
             Indexes = [new() { Name = "IX_Employee_Code", Columns = "Code,Id", DescendingColumns = "Code", Include = "Amount", Filter = "[Amount] > 0", Unique = true }],
             Checks = [new() { Name = "CK_Employee_Amount", Expression = "[Amount] >= 0" }]
         };
@@ -130,11 +134,13 @@ internal static class StructureArchiveChecks
             && StructureArchiveText.PrimaryKeyMarker(table, table.Columns[1]) == "");
         var foreignMarker = StructureArchiveText.ForeignKeyMarker(project, related, related.Columns[0]);
         check("Archive uses a compact filled-circle foreign key marker", foreignMarker == "●"
-            && StructureArchiveText.ForeignKeyMarker(project, related, related.Columns[1]) == "");
+            && StructureArchiveText.ForeignKeyMarker(project, related, related.Columns[3]) == "");
         check("Archive keeps indexes in a dedicated table-level section", StructureArchiveText.IndexNotes(table).Single().Contains("IX_Employee_Code")
             && StructureArchiveText.OtherNotes(table).All(note => !note.Contains("IX_Employee_Code")));
         var actualForeignMarker = StructureArchiveText.ForeignKeyMarker(project, table, table.Columns[2]);
         check("Archive marks a real cross-table foreign key without verbose detail", actualForeignMarker == "●");
+        check("Archive uses an open circle for a logical relationship", StructureArchiveText.ForeignKeyMarker(project, table, table.Columns[1]) == "○"
+            && notes.Contains("逻辑关系") && notes.Contains("不生成数据库约束"));
         var savedEmployee = snapshot.Project.Tables.Single(item => item.Name == "Employee");
         check("Archive separates Chinese name from the final description column", savedEmployee.Columns[1].Label == "员工编号"
             && StructureArchiveText.Description(savedEmployee.Columns[1]) == "输入位数：20"

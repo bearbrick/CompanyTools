@@ -1,0 +1,157 @@
+@using DbStudio.Core
+@inject IJSRuntime JS
+
+<section class="er-page" aria-label="项目 ER 关系图">
+    <header class="er-header">
+        <div>
+            <span class="eyebrow">PROJECT RELATIONSHIPS</span>
+            <h1>ER 关系图</h1>
+            <p>@Project.Name · 基于已保存设计 r@(Project.Revision)，点击数据表可进入结构设计。</p>
+        </div>
+        <div class="er-summary" aria-label="关系统计">
+            <span><i class="logical-dot"></i>逻辑关系 <b>@model.LogicalCount</b></span>
+            <span><i class="physical-dot"></i>物理外键 <b>@model.PhysicalCount</b></span>
+            <span>当前显示 <b>@model.Nodes.Count</b> 张表</span>
+        </div>
+    </header>
+
+    <div class="er-toolbar">
+        <label>模块
+            <select @bind="module" @bind:after="Rebuild">
+                <option value="">全部模块</option>
+                @foreach (var item in ModuleOrdering.Names(Project))
+                {
+                    <option value="@item">@item</option>
+                }
+            </select>
+        </label>
+        <label>关系类型
+            <select @bind="relationType" @bind:after="Rebuild">
+                <option value="all">全部关系</option>
+                <option value="logical">仅逻辑关系</option>
+                <option value="physical">仅物理外键</option>
+            </select>
+        </label>
+        <label class="er-search"><Icon Name="search" /><input aria-label="搜索 ER 图中的表或字段" placeholder="搜索表或字段…" @bind="search" @bind:event="oninput" @bind:after="Rebuild" /></label>
+        <label class="er-check"><input type="checkbox" @bind="onlyRelated" @bind:after="Rebuild" /> 仅显示有关联的表</label>
+        <label class="er-check"><input type="checkbox" @bind="showAllColumns" @bind:after="Rebuild" /> 展开全部字段</label>
+        <div class="er-spacer"></div>
+        <div class="er-zoom" aria-label="画布缩放">
+            <button aria-label="缩小 ER 图" title="缩小" @onclick="() => Zoom(-0.15)">−</button>
+            <button @onclick="Fit"><Icon Name="arrows-angle-expand" /> 适应画布</button>
+            <button aria-label="放大 ER 图" title="放大" @onclick="() => Zoom(0.15)">＋</button>
+        </div>
+    </div>
+
+    <div class="er-legend">
+        <span><i class="legend-line physical"></i>物理外键</span>
+        <span><i class="legend-line logical"></i>逻辑关系</span>
+        <span class="er-hint">拖动画布移动 · 滚轮缩放 · 筛选时自动保留直接关联表</span>
+    </div>
+
+    <div class="er-viewport" @ref="viewport" data-diagram-width="@model.Width" data-diagram-height="@model.Height">
+        @if (model.Nodes.Count == 0)
+        {
+            <div class="er-empty">
+                <Icon Name="diagram-3" />
+                <h2>@(Project.Tables.Count == 0 ? "项目中还没有数据表" : Project.Tables.Sum(table => table.ForeignKeys.Count) == 0 ? "还没有定义表关系" : "当前筛选条件没有匹配关系")</h2>
+                <p>@(Project.Tables.Sum(table => table.ForeignKeys.Count) == 0 ? "请先在数据表的“表关系”中建立逻辑关系或物理外键。" : "尝试清空搜索、切换模块或显示全部关系。")</p>
+            </div>
+        }
+        else
+        {
+            <div class="er-stage" style="width:@Px(model.Width);height:@Px(model.Height)">
+                <svg class="er-links" width="@model.Width" height="@model.Height" viewBox="0 0 @model.Width @model.Height" aria-hidden="true">
+                    <defs>
+                        <marker id="er-arrow-logical" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker>
+                        <marker id="er-arrow-physical" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker>
+                    </defs>
+                    @foreach (var edge in model.Edges)
+                    {
+                        <path class="er-edge-hit" d="@edge.Path"><title>@EdgeTitle(edge)</title></path>
+                        <path class="er-edge @(edge.IsLogical ? "logical" : "physical")" d="@edge.Path" marker-end="url(#@(edge.IsLogical ? "er-arrow-logical" : "er-arrow-physical"))"><title>@EdgeTitle(edge)</title></path>
+                        <g class="er-edge-label @(edge.IsLogical ? "logical" : "physical")" transform="translate(@edge.LabelX @edge.LabelY)">
+                            <rect x="-11" y="-9" width="22" height="18" rx="5"></rect>
+                            <text text-anchor="middle" dominant-baseline="central">@(edge.IsLogical ? "L" : "P")</text>
+                        </g>
+                    }
+                </svg>
+
+                @foreach (var node in model.Nodes)
+                {
+                    <button class="er-node @(node.ContextOnly ? "context-node" : "")" style="left:@Px(node.X);top:@Px(node.Y);width:@Px(node.Width);height:@Px(node.Height)" @onclick="() => TableRequested.InvokeAsync(Project.Tables.Single(table => table.Id == node.TableId))" title="打开 @node.Schema.@node.Name">
+                        <span class="er-node-header">
+                            <span><b>@DisplayName(node)</b><small>@node.Schema.@node.Name</small></span>
+                            <em>@node.Module</em>
+                        </span>
+                        <span class="er-columns">
+                            @if (node.Columns.Count == 0)
+                            {
+                                <span class="er-column empty-column">暂无可展示字段</span>
+                            }
+                            @foreach (var column in node.Columns)
+                            {
+                                <span class="er-column @(column.RelationshipKey ? "relation-column" : "")">
+                                    <i>@(column.PrimaryKey ? "PK" : column.RelationshipKey ? "R" : "")</i>
+                                    <b>@column.Name</b>
+                                    <small>@column.Type</small>
+                                </span>
+                            }
+                            @if (node.HiddenColumns > 0)
+                            {
+                                <span class="er-more">另有 @node.HiddenColumns 个字段未展开</span>
+                            }
+                        </span>
+                    </button>
+                }
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public DesignProject Project { get; set; } = default!;
+    [Parameter] public EventCallback<TableDesign> TableRequested { get; set; }
+
+    private ElementReference viewport;
+    private RelationshipDiagramModel model = new([], [], 900, 520, 0, 0);
+    private string module = "";
+    private string relationType = "all";
+    private string search = "";
+    private bool onlyRelated = true;
+    private bool showAllColumns;
+    private int renderedRevision = -1;
+    private bool fitAfterRender = true;
+
+    protected override void OnParametersSet()
+    {
+        if (renderedRevision == Project.Revision)
+        {
+            return;
+        }
+        renderedRevision = Project.Revision;
+        Rebuild();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (model.Nodes.Count == 0)
+        {
+            return;
+        }
+        await JS.InvokeVoidAsync("studio.erDiagramInit", viewport, firstRender || fitAfterRender);
+        fitAfterRender = false;
+    }
+
+    private void Rebuild()
+    {
+        model = RelationshipDiagramLayout.Build(Project, module, search, relationType, onlyRelated, showAllColumns);
+        fitAfterRender = true;
+    }
+
+    private async Task Zoom(double delta) => await JS.InvokeVoidAsync("studio.erDiagramZoom", viewport, delta);
+    private async Task Fit() => await JS.InvokeVoidAsync("studio.erDiagramFit", viewport);
+    private static string Px(double value) => value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "px";
+    private static string DisplayName(RelationshipDiagramNode node) => string.IsNullOrWhiteSpace(node.Label) ? node.Name : node.Label;
+    private static string EdgeTitle(RelationshipDiagramEdge edge) => $"{(edge.IsLogical ? "逻辑关系" : "物理外键")} · {edge.Name} · {edge.Columns} → {edge.TargetColumns}";
+}
