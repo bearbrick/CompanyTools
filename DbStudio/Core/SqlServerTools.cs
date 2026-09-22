@@ -12,8 +12,8 @@ namespace DbStudio.Core;
 public record SchemaChange(string Operation, string ObjectType, string Name);
 
 /// <summary>只包含可显示信息的同步计划，实际执行始终使用服务端保存的不可变包。</summary>
-public record DatabasePlan(string Id, string Database, int ProjectRevision, DateTimeOffset ExpiresAt,
-    List<SchemaChange> Changes, List<DeploymentWarning> Warnings, string Script, bool Prune, bool AllowDataLoss,
+public record DatabasePlan(string Id, string Database, int ProjectRevision, int? ReleaseVersion, string Environment, DateTimeOffset ExpiresAt,
+    List<SchemaChange> Changes, List<DeploymentWarning> Warnings, List<DataLossRisk> DataLossRisks, string Script, bool Prune, bool AllowDataLoss,
     TableDeploymentScope? Scope = null, IReadOnlyList<ComparisonTiming>? Timings = null);
 
 /// <summary>
@@ -23,7 +23,8 @@ public record DatabasePlan(string Id, string Database, int ProjectRevision, Date
 public sealed partial class SqlServerTools(StudioStore store)
 {
     private sealed record StoredPlan(DatabasePlan View, string ProjectId, string ConnectionId, int ConnectionRevision,
-        string UserId, byte[] Package, string TargetHash, byte[] TargetPackage, IReadOnlyList<EmptyColumnDeletion.Column> EmptyColumns);
+        string UserId, DesignProject SourceProject, byte[] Package, string TargetHash, byte[] TargetPackage,
+        IReadOnlyList<EmptyColumnDeletion.Column> EmptyColumns);
     private readonly ConcurrentDictionary<string, StoredPlan> plans = new();
     private readonly SemaphoreSlim executionGate = new(1, 1);
 
@@ -54,6 +55,20 @@ public sealed partial class SqlServerTools(StudioStore store)
     /// DacFx 再次验证依赖和数据丢失条件，事务提交失败时由部署引擎回滚。
     /// </summary>
     public async Task<DatabaseDeploymentResult> ExecuteAsync(ClaimsPrincipal principal, string projectId, string planId, string confirmedDatabase, CancellationToken cancellationToken = default)
+        => await ExecuteAsync(principal, projectId, planId, confirmedDatabase, "", "", cancellationToken);
+
+    /// <summary>
+    /// 执行服务端计划；生产环境必须额外提交与计划 V 对应的确认短语。
+    /// </summary>
+    public async Task<DatabaseDeploymentResult> ExecuteAsync(ClaimsPrincipal principal, string projectId, string planId,
+        string confirmedDatabase, string productionConfirmation, CancellationToken cancellationToken = default)
+        => await ExecuteAsync(principal, projectId, planId, confirmedDatabase, productionConfirmation, "", cancellationToken);
+
+    /// <summary>
+    /// 执行服务端计划；生产发布和数据损失分别使用独立、精确匹配的确认短语。
+    /// </summary>
+    public async Task<DatabaseDeploymentResult> ExecuteAsync(ClaimsPrincipal principal, string projectId, string planId,
+        string confirmedDatabase, string productionConfirmation, string dataLossConfirmation, CancellationToken cancellationToken = default)
     {
         await executionGate.WaitAsync(cancellationToken);
         try
@@ -63,15 +78,37 @@ public sealed partial class SqlServerTools(StudioStore store)
                 throw new InvalidOperationException("同步计划不存在或不属于当前会话，请重新比对。");
             }
             var credential = store.Credential(principal, projectId, plan.ConnectionId);
-            var project = store.DatabaseProject(principal, projectId);
+            var currentProject = store.DatabaseProject(principal, projectId);
+            var project = plan.SourceProject;
             if (confirmedDatabase != plan.View.Database)
             {
                 throw new InvalidOperationException("请输入完整目标数据库名称确认执行。");
             }
-            if (plan.View.ExpiresAt <= DateTimeOffset.UtcNow || credential.Profile.Revision != plan.ConnectionRevision || project.Revision != plan.View.ProjectRevision)
+            if (plan.View.Environment == DatabaseEnvironments.Production
+                && (plan.View.ReleaseVersion is not int productionRelease
+                    || productionConfirmation != DatabaseEnvironments.ProductionConfirmation(productionRelease)))
+            {
+                throw new InvalidOperationException("生产发布确认短语不正确，请重新核对发布版本。");
+            }
+            if (plan.View.DataLossRisks.Count > 0 && !plan.View.AllowDataLoss)
+            {
+                throw new InvalidOperationException("计划包含可能丢失数据的变更。请返回比对选项启用高风险 DDL，重新生成计划并逐项核对。");
+            }
+            if (plan.View.DataLossRisks.Count > 0
+                && dataLossConfirmation != DataLossAssessment.Confirmation(plan.View.Database))
+            {
+                throw new InvalidOperationException("数据损失确认短语不正确，请核对高风险变更和目标数据库。");
+            }
+            if (plan.View.ExpiresAt <= DateTimeOffset.UtcNow || credential.Profile.Revision != plan.ConnectionRevision
+                || (plan.View.ReleaseVersion == null && currentProject.Revision != plan.View.ProjectRevision))
             {
                 plans.TryRemove(planId, out _);
                 throw new InvalidOperationException("计划已过期，或项目／连接已修改，请重新比对。");
+            }
+            if (plan.View.ReleaseVersion is int releaseVersion)
+            {
+                store.EnsurePromotionAllowed(principal, projectId, plan.ConnectionId, releaseVersion);
+                project = store.DeploymentProject(principal, projectId, releaseVersion);
             }
             return await Task.Run(() =>
             {
@@ -111,17 +148,23 @@ public sealed partial class SqlServerTools(StudioStore store)
                         throw new InvalidOperationException("空列删除计划已变化，请重新比对。");
                     }
                 }
-                if (store.DatabaseProject(principal, projectId).Revision != plan.View.ProjectRevision
+                if ((plan.View.ReleaseVersion == null && store.DatabaseProject(principal, projectId).Revision != plan.View.ProjectRevision)
                     || store.Credential(principal, projectId, plan.ConnectionId).Profile.Revision != plan.ConnectionRevision)
                 {
                     plans.TryRemove(planId, out _);
                     throw new InvalidOperationException("结构检查期间项目或连接已修改，请重新比对。");
                 }
+                if (plan.View.ReleaseVersion is int verifiedRelease)
+                {
+                    // DacFx 规划可能耗时较长，进入不可重复部署前再次检查低级环境状态。
+                    store.EnsurePromotionAllowed(principal, projectId, plan.ConnectionId, verifiedRelease);
+                }
                 // 消耗计划后再进入不可重复的部署阶段；失败也必须重新预览。
                 plans.TryRemove(planId, out _);
                 var actor = store.RequireProject(principal, projectId, ProjectAccess.Database, Permission.Design);
                 store.LogDatabaseOperation(principal, projectId, "开始同步结构", $"{credential.Profile.Name} · 计划 {planId}");
-                var deploymentId = store.BeginDeployment(actor.DisplayName, projectId, credential.Profile, project.Revision, plan.View.Scope?.DisplayName ?? "整库");
+                var deploymentId = store.BeginDeployment(actor.DisplayName, projectId, credential.Profile, project.Revision,
+                    plan.View.ReleaseVersion, plan.View.Scope?.DisplayName ?? "整库");
                 try
                 {
                     if (plan.EmptyColumns.Count > 0)
@@ -133,7 +176,8 @@ public sealed partial class SqlServerTools(StudioStore store)
                         service.Deploy(source, credential.Profile.Database, true, options, cancellationToken);
                     }
                     var verification = VerifyPublishedStructure(service, credential.Profile.Database, project, cancellationToken);
-                    var result = store.CompleteDeployment(deploymentId, project, actor.DisplayName, verification.FullyVerified, verification.Detail);
+                    var result = store.CompleteDeployment(deploymentId, project, actor.DisplayName, plan.View.Environment,
+                        plan.View.ReleaseVersion, verification.FullyVerified, verification.Detail);
                     store.LogDatabaseResult(actor.DisplayName, projectId, verification.FullyVerified ? "发布数据库版本" : "局部同步结构", $"{credential.Profile.Name} · {result.Message}");
                     return result;
                 }

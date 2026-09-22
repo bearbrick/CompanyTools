@@ -97,9 +97,10 @@ internal static class SingleTableDatabaseChecks
         check("SQL whole-project comparison still exposes unselected pending work", full.Script.Contains("MustNotDeploy"));
         a.Columns.RemoveAll(c => c.Name == "Added");
         project = store.SaveLabeledTable(admin, project.Id, project.Revision, a);
-        var prune = await tools.CompareTableAsync(admin, project.Id, profile.Id, a.Id, prune: true);
+        var prune = await tools.CompareTableAsync(admin, project.Id, profile.Id, a.Id, prune: true, allowDataLoss: true);
         check("SQL single-table prune has a column removal without other table drops", prune.Changes.Any(c => c.Operation == "Drop") && !prune.Script.Contains("DROP TABLE [dbo].[Unselected]"));
-        await tools.ExecuteAsync(admin, project.Id, prune.Id, database);
+        check("SQL single-table column removal is listed as high-risk DDL", prune.DataLossRisks.Any(r => r.Code == "DropColumn"));
+        await tools.ExecuteAsync(admin, project.Id, prune.Id, database, "", DataLossAssessment.Confirmation(database));
         actual = await tools.ReverseAsync(admin, project.Id, profile.Id);
         check("SQL single-table prune preserves unselected table", actual.Project.Tables.Count == 2 && actual.Project.Tables.Single(t => t.Name == a.Name).Columns.All(c => c.Name != "Added"));
         check("SQL single-table sync and prune preserve users roles permissions and SIDs", await SecurityStateAsync() == securityBefore);

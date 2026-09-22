@@ -18,11 +18,44 @@ public sealed record ProjectDiffItem(string Scope, string Kind, string ObjectNam
 public sealed record ProjectRevisionDiff(int FromRevision, int ToRevision, IReadOnlyList<ProjectDiffItem> Items);
 
 /// <summary>某个已保存连接的最近发布状态；密码与连接串永不进入记录。</summary>
-public sealed record DatabaseVersionStatus(string ConnectionId, string ConnectionName, string Server, string Database,
+public sealed record DatabaseVersionStatus(string ConnectionId, string ConnectionName, string Environment, string Server, string Database,
     string Status, int ProjectRevision, int? ReleaseVersion, string Scope, string StartedAt, string CompletedAt, string Detail);
 
 /// <summary>同步执行结果，区分整库已发布和局部同步。</summary>
 public sealed record DatabaseDeploymentResult(bool FullyVerified, int? ReleaseVersion, int ProjectRevision, string Message);
+
+/// <summary>不可变 V 在环境链路中的推进约束。</summary>
+public static class ReleasePromotionPolicy
+{
+    /// <summary>返回阻止发布的原因；空字符串表示允许推进。</summary>
+    public static string BlockReason(string targetConnectionId, string targetEnvironment, int releaseVersion,
+        IReadOnlyList<DatabaseVersionStatus> statuses)
+    {
+        var targetOrder = DatabaseEnvironments.Order(targetEnvironment);
+        if (targetOrder <= DatabaseEnvironments.Order(DatabaseEnvironments.Development))
+        {
+            return "";
+        }
+
+        var lower = statuses
+            .Where(item => item.ConnectionId != targetConnectionId
+                && DatabaseEnvironments.Order(item.Environment) < targetOrder)
+            .ToList();
+        if (lower.Count == 0)
+        {
+            return $"V{releaseVersion} 尚未经过较低环境，请先配置并发布到开发环境。";
+        }
+
+        var blocked = lower.Where(item => item.Status != "succeeded" || item.ReleaseVersion != releaseVersion).ToList();
+        if (blocked.Count == 0)
+        {
+            return "";
+        }
+
+        var targets = string.Join("、", blocked.Select(item => $"{DatabaseEnvironments.Name(item.Environment)}：{item.ConnectionName}"));
+        return $"V{releaseVersion} 尚未在所有较低环境验证通过：{targets}。";
+    }
+}
 
 internal sealed record RevisionCommitInfo(string Actor, string Source, string Action, string Summary, int? RestoredFromRevision = null)
 {

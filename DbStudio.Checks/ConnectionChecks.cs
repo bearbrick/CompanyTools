@@ -22,6 +22,7 @@ internal static class ConnectionChecks
             UserName = "fixture_account"
         }, password);
         check("Connection profile never returns password", !JsonSerializer.Serialize(profile).Contains(password));
+        check("Historical connection defaults to development environment", profile.Environment == DatabaseEnvironments.Development);
         check("Connection is isolated to its project", store.Connections(owner, project.Id).Single().Id == profile.Id);
         Reject<UnauthorizedAccessException>("Other project owner cannot list connections", () => store.Connections(outsider, project.Id), check);
         var moved = ModelJson.Clone(profile);
@@ -32,6 +33,22 @@ internal static class ConnectionChecks
 
         using var db = new SqliteConnection("Data Source=" + Path.Combine(dataDirectory, "studio.db"));
         db.Open();
+        using (var deployment = db.CreateCommand())
+        {
+            deployment.CommandText = """
+                INSERT INTO DatabaseDeployments(Id,ProjectId,ConnectionId,ConnectionName,Server,DatabaseName,ProjectRevision,Scope,Status,ReleaseVersion,StartedAt,CompletedAt,Actor,Detail,Environment,RequestedReleaseVersion)
+                VALUES('environment-check',$project,$connection,$name,$server,$database,7,'整库','succeeded',2,$time,$time,'检查','完整校验','development',2)
+                """;
+            deployment.Parameters.AddWithValue("$project", project.Id);
+            deployment.Parameters.AddWithValue("$connection", profile.Id);
+            deployment.Parameters.AddWithValue("$name", profile.Name);
+            deployment.Parameters.AddWithValue("$server", profile.Server);
+            deployment.Parameters.AddWithValue("$database", profile.Database);
+            deployment.Parameters.AddWithValue("$time", DateTimeOffset.UtcNow.ToString("O"));
+            deployment.ExecuteNonQuery();
+        }
+        check("Matching environment retains verified release status",
+            store.DatabaseVersions(owner, project.Id).Single().ReleaseVersion == 2);
         string ProtectedSecret()
         {
             using var command = db.CreateCommand();
@@ -43,9 +60,16 @@ internal static class ConnectionChecks
         check("SQL password is encrypted in storage", !encrypted.Contains(password) && !encrypted.Contains("fixture_account"));
         var protector = DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(dataDirectory, "keys"))).CreateProtector("DbStudio.DatabaseCredentials.v1");
         profile.Name = "更新名称后保留密码";
+        profile.Environment = DatabaseEnvironments.Test;
         var oldRevision = profile.Revision;
         profile = store.SaveConnection(owner, profile, "");
         check("Connection rename preserves existing SQL password", new SqlConnectionStringBuilder(protector.Unprotect(ProtectedSecret())).Password == password);
+        check("Connection release environment persists", store.Connections(owner, project.Id).Single().Environment == DatabaseEnvironments.Test);
+        check("Changing release environment invalidates prior environment status",
+            store.DatabaseVersions(owner, project.Id).Single() is { Environment: DatabaseEnvironments.Test, Status: "never", ReleaseVersion: null });
+        var invalidEnvironment = ModelJson.Clone(profile);
+        invalidEnvironment.Environment = "unknown";
+        Reject<InvalidOperationException>("Unknown release environment rejected", () => store.SaveConnection(owner, invalidEnvironment, password), check);
         var stale = ModelJson.Clone(profile);
         stale.Revision = oldRevision;
         Reject<InvalidOperationException>("Stale connection edit rejected", () => store.SaveConnection(owner, stale, password), check);

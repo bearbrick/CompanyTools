@@ -13,7 +13,7 @@
     }
     @if (busy) { <div class="tools-progress" role="status">@progress <button @onclick="Cancel">取消操作</button></div> }
     <fieldset disabled="@busy">
-        <div class="connection-bar"><label>当前连接<StudioSelect Label="当前数据库连接" Value="@connectionId" ValueChanged="SelectConnection" Items="ConnectionOptions" Placeholder="先添加数据库连接" /></label>@if (SelectedVersion is { } status) { <span class="subtle-tag">@(status.ProjectRevision == 0 ? "尚未成功同步" : $"最后成功 r{status.ProjectRevision}" + (status.ReleaseVersion is int version ? $" · V{version}" : " · 局部"))@(status.Status == "failed" ? " · 最新执行失败" : "")</span> }<button disabled="@(connectionId == "")" @onclick="Test">测试连接</button><button @onclick="RefreshConnections">刷新连接</button>@if (manage) { <button @onclick="NewConnection">新增连接</button><button disabled="@(connectionId == "")" @onclick="EditConnection">编辑连接</button><button class="text-button danger" disabled="@(connectionId == "")" @onclick="RequestDeleteConnection">删除连接</button> }</div>
+        <div class="connection-bar"><label>当前连接<StudioSelect Label="当前数据库连接" Value="@connectionId" ValueChanged="SelectConnection" Items="ConnectionOptions" Placeholder="先添加数据库连接" /></label>@if (SelectedVersion is { } status) { <span class="subtle-tag">@DatabaseEnvironments.Name(status.Environment) · @(status.ProjectRevision == 0 ? "尚未成功同步" : $"最后成功 r{status.ProjectRevision}" + (status.ReleaseVersion is int version ? $" · V{version}" : " · 局部"))@(status.Status == "failed" ? " · 最新执行失败" : "")</span> }<button disabled="@(connectionId == "")" @onclick="Test">测试连接</button><button @onclick="RefreshConnections">刷新连接</button>@if (manage) { <button @onclick="NewConnection">新增连接</button><button disabled="@(connectionId == "")" @onclick="EditConnection">编辑连接</button><button class="text-button danger" disabled="@(connectionId == "")" @onclick="RequestDeleteConnection">删除连接</button> }</div>
         @if (deleting != null)
         {
             <section class="connection-form" role="alertdialog" aria-label="删除连接确认">
@@ -26,7 +26,7 @@
         @if (edit != null)
         {
             <section class="connection-form"><h2>@(edit.Revision == 0 ? "新增连接" : "编辑连接")</h2><div class="form-grid">
-                <label>连接名称<input @bind="edit.Name" @bind:event="oninput" /></label><label>服务器 / 实例<input @bind="edit.Server" @bind:event="oninput" placeholder="例如：192.168.1.10 或 SERVER\INSTANCE" /></label>
+                <label>连接名称<input @bind="edit.Name" @bind:event="oninput" /></label><label>发布环境<StudioSelect Label="数据库发布环境" @bind-Value="edit.Environment" Items="EnvironmentOptions" /></label><label>服务器 / 实例<input @bind="edit.Server" @bind:event="oninput" placeholder="例如：192.168.1.10 或 SERVER\INSTANCE" /></label>
                 <label>数据库名称<input @bind="edit.Database" @bind:event="oninput" /></label><label>认证方式<StudioSelect Label="数据库认证方式" @bind-Value="authentication" Items="AuthenticationOptions" /></label>
                 @if (authentication == "sql") { <label>SQL 登录账号<input autocomplete="off" @bind="edit.UserName" @bind:event="oninput" /></label><label>密码<input type="password" autocomplete="new-password" @bind="password" @bind:event="oninput" placeholder="编辑时留空保留原密码" /></label> }
             </div><label class="check-label"><input type="checkbox" @bind="edit.TrustServerCertificate" /> 信任服务器证书（自签名证书的内网环境）</label><p class="muted">连接由应用服务器发起。Windows 认证使用应用运行账号；SQL 密码加密保存，不进入项目备份或分享。</p><div class="modal-footer"><button @onclick="() => edit = null">取消</button><button class="primary" @onclick="SaveConnection">保存连接</button></div></section>
@@ -35,7 +35,7 @@
             @if (!SingleTable) {
             <article><span class="eyebrow">DATABASE → DESIGN</span><h2>从数据库反推设计</h2><p>读取表、字段、索引、外键和检查约束。预览后合并到当前项目。</p><button disabled="@(connectionId == "")" @onclick="Reverse">读取结构并预览</button></article>
             }
-            <article><span class="eyebrow">DESIGN → DATABASE</span><h2>结构比对与同步</h2><p>按已保存设计生成差异和 SQL 脚本，核对后再执行。</p><label class="check-label"><input type="checkbox" @bind="prune" @bind:after="InvalidatePlan" /> @(SingleTable ? "删除当前表中设计未定义的列、索引和约束" : "删除数据库中设计未定义的表、列和约束")</label><label class="check-label"><input type="checkbox" @bind="allowDataLoss" @bind:after="InvalidatePlan" /> 允许可能丢失数据的变更</label><button class="primary" disabled="@(connectionId == "")" @onclick="Compare">@(SingleTable ? "比对当前表" : "开始比对")</button></article>
+            <article><span class="eyebrow">DESIGN → DATABASE</span><h2>结构比对与同步</h2><p>@(SingleTable ? "开发环境可按当前已保存设计执行单表同步。" : "开发环境可从当前 r 建立 V；其他环境只能逐级推进同一个不可变 V。")</p>@if (!SingleTable) { <label>发布内容<StudioSelect Label="待发布的设计版本" Value="@releaseSource" ValueChanged="SelectReleaseSource" Items="ReleaseOptions" Placeholder="请先在开发环境生成 V" /></label> }<label class="check-label"><input type="checkbox" @bind="prune" @bind:after="InvalidatePlan" /> @(SingleTable ? "删除当前表中设计未定义的列、索引和约束" : "删除数据库中设计未定义的表、列和约束")</label><label class="check-label"><input type="checkbox" @bind="allowDataLoss" @bind:after="InvalidatePlan" /> 解锁高风险 DDL（删表、删列、类型收窄等）</label><p class="muted ddl-option-note">解锁只取消预防性阻断；如果现有值无法转换，SQL Server 仍会回滚并报错。</p><button class="primary" disabled="@(connectionId == "" || (!SingleTable && releaseSource == ""))" @onclick="Compare">@(SingleTable ? "比对当前表" : "开始比对")</button></article>
             <article><span class="eyebrow">DATA CLEANUP</span><h2>@(SingleTable ? "清空当前表数据" : "按分类清空数据")</h2>
                 @if (!SingleTable)
                 {
@@ -54,19 +54,24 @@
         }
         @if (plan != null)
         {
-            <section class="tools-result"><div class="section-title"><div><h2>结构差异 <span>@plan.Changes.Count</span></h2><p class="muted">目标 @Selected?.Server / @plan.Database · 范围 @(plan.Scope?.DisplayName ?? "整库") · 设计 r@(plan.ProjectRevision) · 计划有效至 @plan.ExpiresAt.ToLocalTime().ToString("HH:mm")</p></div><button @onclick="DownloadPlan">下载同步 SQL</button></div>
+            <section class="tools-result"><div class="section-title"><div><h2>结构差异 <span>@plan.Changes.Count</span></h2><p class="muted">@DatabaseEnvironments.Name(plan.Environment)环境 · 目标 @Selected?.Server / @plan.Database · 范围 @(plan.Scope?.DisplayName ?? "整库") · 来源 @(plan.ReleaseVersion is int sourceVersion ? $"V{sourceVersion} / r{plan.ProjectRevision}" : $"当前设计 r{plan.ProjectRevision}") · 计划有效至 @plan.ExpiresAt.ToLocalTime().ToString("HH:mm")</p></div><button @onclick="DownloadPlan">下载同步 SQL</button></div>
                 @if (plan.Timings is { Count: > 0 })
                 {
                     <p class="muted comparison-timings" aria-label="比对阶段耗时">@foreach (var timing in plan.Timings) { <span>@timing.Stage @((timing.Milliseconds / 1000).ToString("0.0")) 秒</span> }</p>
                 }
                 @if (plan.Changes.Count == 0) { <p class="settings-notice">当前比对选项下，设计与数据库结构一致。</p> }
                 <DatabaseWarnings Items="plan.Warnings" />
+                @if (plan.DataLossRisks.Count > 0)
+                {
+                    <section class="data-loss-review" aria-label="高风险 DDL 清单">
+                        <div><h3>高风险 DDL <span>@plan.DataLossRisks.Count</span></h3><strong>@(plan.AllowDataLoss ? "已解锁，执行前仍需专项确认" : "当前计划保持阻断")</strong></div>
+                        <p>@(plan.AllowDataLoss ? "以下操作将进入执行链路；请核对数据备份和实际值的可转换性。" : "返回比对选项勾选“解锁高风险 DDL”后重新生成计划，否则服务端不会执行。")</p>
+                        <ol>@foreach (var risk in plan.DataLossRisks) { <li><b>@risk.Title</b><code>@risk.Detail</code></li> }</ol>
+                    </section>
+                }
                 <div class="tools-table-scroll"><table class="list-table"><thead><tr><th>操作</th><th>对象类型</th><th>对象</th></tr></thead><tbody>@foreach (var change in plan.Changes) { <tr><td>@OperationName(change.Operation)</td><td>@change.ObjectType</td><td class="mono">@change.Name</td></tr> }</tbody></table></div>
                 <details class="plan-script"><summary>查看完整同步脚本</summary><pre>@plan.Script</pre></details>
-                @if (plan.Changes.Count > 0)
-                {
-                    <div class="execute-panel"><h3>执行到实际数据库</h3><p>执行会修改 <b>@Selected?.Server / @plan.Database</b>。@(plan.Scope == null ? "" : $"本计划范围：{plan.Scope.DisplayName}。")请核对脚本并做好备份。@(plan.Prune ? "本计划包含删除多余对象。" : "") @(plan.AllowDataLoss ? "本计划允许数据丢失。" : "")</p><label class="check-label"><input type="checkbox" @bind="reviewed" /> 我已核对目标和同步脚本</label><label>输入目标数据库名称确认<input @bind="confirmedDatabase" @bind:event="oninput" placeholder="@plan.Database" /></label><button class="primary" disabled="@(!reviewed || confirmedDatabase != plan.Database)" @onclick="Execute">执行同步</button></div>
-                }
+                <div class="execute-panel"><h3>@(plan.Changes.Count == 0 ? "验证并登记环境版本" : "执行到实际数据库")</h3><p>@(plan.Changes.Count == 0 ? "当前结构没有差异；仍会重新执行完整校验，并把该数据库登记到对应 V。" : $"执行会修改 {Selected?.Server} / {plan.Database}。")@(plan.Scope == null ? "" : $"本计划范围：{plan.Scope.DisplayName}。")请核对脚本并做好备份。@(plan.Prune ? "本计划包含删除多余对象。" : "") @(plan.AllowDataLoss ? "本计划已解锁高风险 DDL。" : "")</p><label class="check-label"><input type="checkbox" @bind="reviewed" /> 我已核对目标、发布版本和同步脚本</label><label>输入目标数据库名称确认<input @bind="confirmedDatabase" @bind:event="oninput" placeholder="@plan.Database" /></label>@if (plan.DataLossRisks.Count > 0 && plan.AllowDataLoss) { <label class="data-loss-confirm">输入“@DataLossAssessment.Confirmation(plan.Database)”确认高风险 DDL<input @bind="dataLossConfirmation" @bind:event="oninput" placeholder="@DataLossAssessment.Confirmation(plan.Database)" /></label> }@if (plan.Environment == DatabaseEnvironments.Production && plan.ReleaseVersion is int productionVersion) { <label class="production-confirm">输入“@DatabaseEnvironments.ProductionConfirmation(productionVersion)”确认生产发布<input @bind="productionConfirmation" @bind:event="oninput" placeholder="@DatabaseEnvironments.ProductionConfirmation(productionVersion)" /></label> }<button class="primary" disabled="@(!CanExecutePlan)" @onclick="Execute">@(plan.Changes.Count == 0 ? "验证并登记" : "执行同步")</button></div>
             </section>
         }
         @if (cleanupPlan != null)
@@ -89,6 +94,7 @@
     private List<DatabaseConnection> connections = [];
     private IReadOnlyList<DatabaseVersionStatus> databaseVersions = [];
     private string connectionId = "", password = "", authentication = "windows", problem = "", notice = "", progress = "", confirmedDatabase = "";
+    private string releaseSource = "current", productionConfirmation = "", dataLossConfirmation = "";
     private string cleanupCategory = TableDataCategories.Business, cleanupConfirmedDatabase = "";
     private bool busy, manage, design, prune, allowDataLoss, reviewed, cleanupReviewed;
     private DatabaseConnection? edit;
@@ -101,8 +107,31 @@
     private CancellationTokenSource? operation;
     private DatabaseConnection? Selected => connections.FirstOrDefault(c => c.Id == connectionId);
     private DatabaseVersionStatus? SelectedVersion => databaseVersions.FirstOrDefault(item => item.ConnectionId == connectionId);
-    private List<SelectOption> ConnectionOptions => connections.Select(c => new SelectOption(c.Id, c.Name, c.Server + " / " + c.Database)).ToList();
+    private List<SelectOption> ConnectionOptions => connections.Select(c => new SelectOption(c.Id, $"[{DatabaseEnvironments.Name(c.Environment)}] {c.Name}", c.Server + " / " + c.Database)).ToList();
     private static readonly List<SelectOption> AuthenticationOptions = [new("windows", "Windows 集成认证"), new("sql", "SQL Server 账号密码")];
+    private static readonly List<SelectOption> EnvironmentOptions = DatabaseEnvironments.All
+        .Select(item => new SelectOption(item.Id, item.Name, $"第 {item.Order / 10} 级发布环境")).ToList();
+    private ProjectVersionSummary? versionSummary;
+    private List<SelectOption> ReleaseOptions
+    {
+        get
+        {
+            var result = new List<SelectOption>();
+            if (Selected?.Environment == DatabaseEnvironments.Development)
+            {
+                result.Add(new("current", $"当前设计 r{Project.Revision}", "完整验证后创建或复用 V"));
+            }
+            result.AddRange((versionSummary?.Releases ?? []).Select(item =>
+                new SelectOption($"v{item.Version}", $"V{item.Version}", $"不可变快照 · 来自 r{item.SourceRevision}")));
+            return result;
+        }
+    }
+    private int? SelectedReleaseVersion => releaseSource.StartsWith('v') && int.TryParse(releaseSource[1..], out var version) ? version : null;
+    private bool CanExecutePlan => plan != null && reviewed && confirmedDatabase == plan.Database
+        && (plan.DataLossRisks.Count == 0 || plan.AllowDataLoss
+            && dataLossConfirmation == DataLossAssessment.Confirmation(plan.Database))
+        && (plan.Environment != DatabaseEnvironments.Production
+            || plan.ReleaseVersion is int version && productionConfirmation == DatabaseEnvironments.ProductionConfirmation(version));
     private static readonly List<SelectOption> CleanupCategoryOptions = TableDataCategories.All
         .Select(item => new SelectOption(item.Id, item.Name, item.Description)).ToList();
     private TableDataCategory? SelectedCleanupCategory => SingleTable ? TableDataCategories.Get(ScopeTable?.DataCategory) : TableDataCategories.Get(cleanupCategory);
@@ -112,19 +141,20 @@
 
     protected override void OnInitialized()
     {
-        Handle(() => { connections = Store.Connections(Principal, Project.Id); databaseVersions = Store.DatabaseVersions(Principal, Project.Id); connectionId = connections.FirstOrDefault()?.Id ?? ""; var access = Store.AccessTo(Principal, Project.Id); manage = access.HasFlag(ProjectAccess.Manage); design = access.HasFlag(ProjectAccess.Design); });
+        Handle(() => { connections = Store.Connections(Principal, Project.Id); databaseVersions = Store.DatabaseVersions(Principal, Project.Id); versionSummary = Store.Versions(Principal, Project.Id); connectionId = connections.FirstOrDefault()?.Id ?? ""; SelectDefaultRelease(); var access = Store.AccessTo(Principal, Project.Id); manage = access.HasFlag(ProjectAccess.Manage); design = access.HasFlag(ProjectAccess.Design); });
     }
-    private void SelectConnection(string value) { connectionId = value; snapshot = null; edit = deleting = null; password = ""; InvalidatePlan(); InvalidateCleanupPlan(); notice = problem = ""; }
-    private void InvalidatePlan() { plan = null; reviewed = false; confirmedDatabase = ""; }
+    private void SelectConnection(string value) { connectionId = value; snapshot = null; edit = deleting = null; password = ""; InvalidatePlan(); InvalidateCleanupPlan(); SelectDefaultRelease(); notice = problem = ""; }
+    private void InvalidatePlan() { plan = null; reviewed = false; confirmedDatabase = productionConfirmation = dataLossConfirmation = ""; }
     private void InvalidateCleanupPlan() { cleanupPlan = null; cleanupReviewed = false; cleanupConfirmedDatabase = ""; }
     private void SelectCleanupCategory(string value) { cleanupCategory = TableDataCategories.Normalize(value); InvalidateCleanupPlan(); }
-    private void NewConnection() { deleting = null; edit = new() { ProjectId = Project.Id }; password = ""; authentication = "windows"; }
+    private void NewConnection() { deleting = null; edit = new() { ProjectId = Project.Id, Environment = DatabaseEnvironments.Development }; password = ""; authentication = "windows"; }
     private void EditConnection() { deleting = null; edit = ModelJson.Clone(Selected); password = ""; authentication = edit?.IntegratedSecurity == true ? "windows" : "sql"; }
     /// <summary>刷新会清理依赖旧连接的预览和草稿，保留仍存在的选中项。</summary>
     private void RefreshConnections() => Handle(() =>
     {
         connections = Store.Connections(Principal, Project.Id);
         databaseVersions = Store.DatabaseVersions(Principal, Project.Id);
+        versionSummary = Store.Versions(Principal, Project.Id);
         SelectConnection(connections.FirstOrDefault(c => c.Id == connectionId)?.Id ?? connections.FirstOrDefault()?.Id ?? "");
         notice = "连接列表已刷新。";
     });
@@ -140,7 +170,7 @@
         SelectConnection(connections.FirstOrDefault()?.Id ?? "");
         notice = "连接配置已删除，实际数据库未改变。";
     });
-    private void SaveConnection() => Handle(() => { edit!.IntegratedSecurity = authentication == "windows"; var saved = Store.SaveConnection(Principal, edit, password); connections = Store.Connections(Principal, Project.Id); databaseVersions = Store.DatabaseVersions(Principal, Project.Id); SelectConnection(saved.Id); password = ""; notice = "连接配置已保存，可以测试连接。"; });
+    private void SaveConnection() => Handle(() => { edit!.IntegratedSecurity = authentication == "windows"; var saved = Store.SaveConnection(Principal, edit, password); connections = Store.Connections(Principal, Project.Id); databaseVersions = Store.DatabaseVersions(Principal, Project.Id); versionSummary = Store.Versions(Principal, Project.Id); SelectConnection(saved.Id); password = ""; notice = "连接配置已保存，可以测试连接。"; });
     private Task Test() => Perform("正在测试连接…", async token => notice = "连接成功：" + await Tools.TestAsync(Principal, Project.Id, connectionId, token));
     private Task Reverse() => Perform("正在读取数据库结构…", async token => { snapshot = null; InvalidatePlan(); snapshotRevision = Project.Revision; snapshot = await Tools.ReverseAsync(Principal, Project.Id, connectionId, token); reversePreview = DatabaseMerge.Preview(Project, snapshot); });
     private Task Compare() => Perform("正在比对结构并生成脚本…", async token => { snapshot = null; InvalidatePlan(); plan = await CompareScopeAsync(token); });
@@ -160,7 +190,7 @@
     private Task Execute() => Perform("正在同步结构，请等待数据库返回结果…", async token =>
     {
         var current = plan!;
-        try { var result = await Tools.ExecuteAsync(Principal, Project.Id, current.Id, confirmedDatabase, token); databaseVersions = Store.DatabaseVersions(Principal, Project.Id); notice = result.Message; }
+        try { var result = await Tools.ExecuteAsync(Principal, Project.Id, current.Id, confirmedDatabase, productionConfirmation, dataLossConfirmation, token); databaseVersions = Store.DatabaseVersions(Principal, Project.Id); versionSummary = Store.Versions(Principal, Project.Id); notice = result.Message; }
         finally { InvalidatePlan(); }
     });
     private Task DownloadPlan() => JS.InvokeVoidAsync("studio.download", $"{plan!.Database}-sync.sql", plan.Script, "text/plain;charset=utf-8").AsTask();
@@ -176,6 +206,13 @@
         finally { InvalidateCleanupPlan(); }
     });
     private static string OperationName(string value) => value switch { "Create" => "新增", "Alter" => "修改", "Drop" => "删除", _ => value };
+    private void SelectReleaseSource(string value) { releaseSource = value; InvalidatePlan(); }
+    private void SelectDefaultRelease()
+    {
+        releaseSource = Selected?.Environment == DatabaseEnvironments.Development
+            ? "current"
+            : versionSummary?.Releases.FirstOrDefault() is { } release ? $"v{release.Version}" : "";
+    }
 
     /// <summary>耗时操作可取消并锁定当前工具上下文，避免切换项目后误用旧计划。</summary>
     private async Task Perform(string text, Func<CancellationToken, Task> action)

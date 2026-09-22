@@ -120,7 +120,7 @@ internal static class DatabaseChecks
             var protectedDrop = await tools.CompareAsync(admin, project.Id, profile.Id, prune: true);
             await tools.ExecuteAsync(admin, project.Id, protectedDrop.Id, database);
         }
-        catch (Microsoft.SqlServer.Dac.DacServicesException) { blocked = true; }
+        catch (Exception ex) when (ex is InvalidOperationException or Microsoft.SqlServer.Dac.DacServicesException) { blocked = true; }
         check("SQL Server blocks destructive change with existing rows by default", blocked);
         using (var target = new SqlConnection(targetConnection))
         {
@@ -130,7 +130,10 @@ internal static class DatabaseChecks
             check("SQL Server blocked deployment preserves target data", Convert.ToInt32(await verify.ExecuteScalarAsync()) == 99);
         }
         var allowedDrop = await tools.CompareAsync(admin, project.Id, profile.Id, prune: true, allowDataLoss: true);
-        await tools.ExecuteAsync(admin, project.Id, allowedDrop.Id, database);
+        check("SQL destructive plan identifies the populated table drop", allowedDrop.DataLossRisks.Any(r => r.Code == "DropTable" && r.Detail.Contains("ExtraTable")));
+        await RejectAsync("SQL destructive plan requires a dedicated confirmation",
+            () => tools.ExecuteAsync(admin, project.Id, allowedDrop.Id, database), check);
+        await tools.ExecuteAsync(admin, project.Id, allowedDrop.Id, database, "", DataLossAssessment.Confirmation(database));
         using (var target = new SqlConnection(targetConnection))
         {
             await target.OpenAsync();

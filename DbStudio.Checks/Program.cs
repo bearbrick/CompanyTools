@@ -311,6 +311,8 @@ LogicalRelationshipChecks.Run(Check);
 RelationshipDiagramChecks.Run(Check);
 ProjectFieldSearchChecks.Run(Check);
 ArchitectureChecks.Run(root, Check);
+ReleasePromotionChecks.Run(Check);
+DataLossAssessmentChecks.Run(Check);
 TypeExpansionChecks.Run(Check);
 await StructureArchiveChecks.RunAsync(store, nextAdmin!, workerA, testPath, Check);
 

@@ -68,15 +68,42 @@ internal static class TypeExpansionDatabaseChecks
             var mixed = await tools.CompareTableAsync(admin, project.Id, profile.Id, table.Id);
             check("SQL mixed shrinking plan never auto approved", !mixed.Warnings.Any(w => w.Code == "SafeTypeExpansion"));
             check("SQL shrinking warning identifies exact column and new capacity", mixed.Warnings.Any(w => w.Code == "TypeCapacityReduction" && w.Issues.Any(i => i.Message.Contains("Item") && i.Message.Contains("10"))));
+            check("SQL shrinking plan exposes a structured data loss risk", mixed.DataLossRisks.Any(r => r.Code == "TypeCapacityReduction" && r.Detail.Contains("Item")));
             var blocked = false;
             try { await tools.ExecuteAsync(admin, project.Id, mixed.Id, database); }
-            catch (DacServicesException) { blocked = true; }
+            catch (InvalidOperationException) { blocked = true; }
             check("SQL mixed shrinking with data blocked", blocked);
             using (var verify = target.CreateCommand())
             {
                 verify.CommandText = "SELECT COUNT(*) FROM dbo.Expansion WHERE LEN(Item)=30";
                 check("SQL blocked shortening preserves existing data", Convert.ToInt32(await verify.ExecuteScalarAsync()) == 1);
             }
+
+            var incompatible = await tools.CompareTableAsync(admin, project.Id, profile.Id, table.Id, allowDataLoss: true);
+            var confirmationRequired = false;
+            try { await tools.ExecuteAsync(admin, project.Id, incompatible.Id, database); }
+            catch (InvalidOperationException) { confirmationRequired = true; }
+            check("SQL high-risk DDL requires its database-bound confirmation", confirmationRequired);
+            var incompatibleRejected = false;
+            try
+            {
+                await tools.ExecuteAsync(admin, project.Id, incompatible.Id, database, "", DataLossAssessment.Confirmation(database));
+            }
+            catch (DacServicesException) { incompatibleRejected = true; }
+            check("SQL Server still rejects values that cannot fit after DDL unlock", incompatibleRejected);
+            using (var repair = target.CreateCommand())
+            {
+                repair.CommandText = "UPDATE dbo.Expansion SET Item=LEFT(Item,10)";
+                await repair.ExecuteNonQueryAsync();
+            }
+            var compatible = await tools.CompareTableAsync(admin, project.Id, profile.Id, table.Id, allowDataLoss: true);
+            await tools.ExecuteAsync(admin, project.Id, compatible.Id, database, "", DataLossAssessment.Confirmation(database));
+            using (var verify = target.CreateCommand())
+            {
+                verify.CommandText = "SELECT CASE WHEN Item=N'1234567890' AND COL_LENGTH('dbo.Expansion','Item')=20 THEN 1 ELSE 0 END FROM dbo.Expansion";
+                check("SQL compatible shortening executes after explicit unlock", Convert.ToInt32(await verify.ExecuteScalarAsync()) == 1);
+            }
+            check("SQL unlocked shortening round trip has zero diff", (await tools.CompareAsync(admin, project.Id, profile.Id)).Changes.Count == 0);
         }
         finally
         {

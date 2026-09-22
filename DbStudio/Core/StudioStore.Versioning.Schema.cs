@@ -52,11 +52,22 @@ public sealed partial class StudioStore
                 StartedAt TEXT NOT NULL,
                 CompletedAt TEXT NOT NULL,
                 Actor TEXT NOT NULL,
-                Detail TEXT NOT NULL
+                Detail TEXT NOT NULL,
+                Environment TEXT NOT NULL DEFAULT 'development',
+                RequestedReleaseVersion INTEGER NULL
             );
             CREATE INDEX IF NOT EXISTS IX_DatabaseDeployments_ProjectConnection
                 ON DatabaseDeployments(ProjectId, ConnectionId, StartedAt DESC);
             """);
+
+        if (Convert.ToInt32(Scalar(db, "SELECT count(*) FROM pragma_table_info('DatabaseDeployments') WHERE name='Environment'")) == 0)
+        {
+            Execute(db, "ALTER TABLE DatabaseDeployments ADD COLUMN Environment TEXT NOT NULL DEFAULT 'development'");
+        }
+        if (Convert.ToInt32(Scalar(db, "SELECT count(*) FROM pragma_table_info('DatabaseDeployments') WHERE name='RequestedReleaseVersion'")) == 0)
+        {
+            Execute(db, "ALTER TABLE DatabaseDeployments ADD COLUMN RequestedReleaseVersion INTEGER NULL");
+        }
 
         using var cmd = Command(db, "SELECT Id,Revision,Document FROM Projects");
         using var rows = cmd.ExecuteReader();

@@ -50,6 +50,10 @@ public sealed partial class StudioStore
             {
                 throw new InvalidOperationException("请填写连接名称、服务器和业务数据库，不允许使用系统库。");
             }
+            if (!DatabaseEnvironments.All.Any(item => item.Id == profile.Environment))
+            {
+                throw new InvalidOperationException("请选择有效的数据库发布环境。");
+            }
             using var db = Open();
             using var tx = db.BeginTransaction();
             ReadProject(db, profile.ProjectId);
@@ -63,6 +67,7 @@ public sealed partial class StudioStore
                 throw new InvalidOperationException("连接已被删除，请刷新连接列表后重试。");
             }
             var copy = ModelJson.Clone(profile);
+            copy.Environment = DatabaseEnvironments.Normalize(copy.Environment);
             var connection = new SqlConnectionStringBuilder
             {
                 DataSource = copy.Server.Trim(),

@@ -9,6 +9,8 @@ public sealed class DatabaseConnection
     public string ProjectId { get; set; } = "";
     /// <summary>连接显示名称。</summary>
     public string Name { get; set; } = "开发数据库";
+    /// <summary>连接所属发布环境；旧连接默认归入开发环境。</summary>
+    public string Environment { get; set; } = DatabaseEnvironments.Development;
     /// <summary>SQL Server 实例地址。</summary>
     public string Server { get; set; } = "";
     /// <summary>明确指定的目标数据库，不允许系统库。</summary>
@@ -27,6 +29,49 @@ public sealed class DatabaseConnection
     {
         get; set;
     }
+}
+
+/// <summary>一个具有固定推进顺序的数据库发布环境。</summary>
+public sealed record DatabaseEnvironment(string Id, string Name, int Order);
+
+/// <summary>数据库环境目录及逐环境推进规则。</summary>
+public static class DatabaseEnvironments
+{
+    /// <summary>允许从当前设计修订建立 V 的开发环境。</summary>
+    public const string Development = "development";
+    /// <summary>用于功能和集成验证的测试环境。</summary>
+    public const string Test = "test";
+    /// <summary>生产发布前的预发布环境。</summary>
+    public const string Staging = "staging";
+    /// <summary>只允许发布已有 V 的生产环境。</summary>
+    public const string Production = "production";
+
+    /// <summary>按发布推进顺序排列的全部环境。</summary>
+    public static IReadOnlyList<DatabaseEnvironment> All
+    {
+        get;
+    } =
+    [
+        new(Development, "开发", 10),
+        new(Test, "测试", 20),
+        new(Staging, "预发布", 30),
+        new(Production, "生产", 40)
+    ];
+
+    /// <summary>把历史或未知环境安全归入开发环境。</summary>
+    public static string Normalize(string? value)
+        => All.Any(item => item.Id == value) ? value! : Development;
+
+    /// <summary>取得环境的中文名称。</summary>
+    public static string Name(string? value)
+        => All.First(item => item.Id == Normalize(value)).Name;
+
+    /// <summary>取得环境的发布顺序。</summary>
+    public static int Order(string? value)
+        => All.First(item => item.Id == Normalize(value)).Order;
+
+    /// <summary>生产发布时要求用户输入的服务端校验短语。</summary>
+    public static string ProductionConfirmation(int releaseVersion) => $"生产 V{releaseVersion}";
 }
 
 /// <summary>反推结果和无法无损映射到设计模型的特性。</summary>

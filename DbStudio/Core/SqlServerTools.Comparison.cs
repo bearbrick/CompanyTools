@@ -10,21 +10,42 @@ public sealed partial class SqlServerTools
     /// <summary>按整个项目的已保存设计生成同步计划。</summary>
     public Task<DatabasePlan> CompareAsync(ClaimsPrincipal principal, string projectId, string connectionId,
         bool prune = false, bool allowDataLoss = false, CancellationToken cancellationToken = default, IProgress<string>? progress = null)
-        => CompareCoreAsync(principal, projectId, connectionId, prune, allowDataLoss, null, cancellationToken, progress);
+        => CompareCoreAsync(principal, projectId, connectionId, null, prune, allowDataLoss, null, cancellationToken, progress);
+
+    /// <summary>使用不可变 V 快照生成整库推进计划，不读取当前设计作为发布内容。</summary>
+    public Task<DatabasePlan> CompareReleaseAsync(ClaimsPrincipal principal, string projectId, string connectionId, int releaseVersion,
+        bool prune = false, bool allowDataLoss = false, CancellationToken cancellationToken = default, IProgress<string>? progress = null)
+        => CompareCoreAsync(principal, projectId, connectionId, releaseVersion, prune, allowDataLoss, null, cancellationToken, progress);
 
     /// <summary>仅将选中表的已保存设计应用于目标模型，其他设计表不参与同步。</summary>
     public Task<DatabasePlan> CompareTableAsync(ClaimsPrincipal principal, string projectId, string connectionId, string tableId,
         bool prune = false, bool allowDataLoss = false, CancellationToken cancellationToken = default, IProgress<string>? progress = null)
     {
-        if (string.IsNullOrWhiteSpace(tableId)) { throw new InvalidOperationException("请选择要比对的表。"); }
-        return CompareCoreAsync(principal, projectId, connectionId, prune, allowDataLoss, tableId, cancellationToken, progress);
+        if (string.IsNullOrWhiteSpace(tableId))
+        {
+            throw new InvalidOperationException("请选择要比对的表。");
+        }
+        return CompareCoreAsync(principal, projectId, connectionId, null, prune, allowDataLoss, tableId, cancellationToken, progress);
     }
     /// <summary>基于已保存设计和目标快照生成计划，不执行变更。默认保留目标多余对象并阻止可能的数据丢失。</summary>
     private async Task<DatabasePlan> CompareCoreAsync(ClaimsPrincipal principal, string projectId, string connectionId,
-        bool prune, bool allowDataLoss, string? tableId, CancellationToken cancellationToken, IProgress<string>? progress)
+        int? releaseVersion, bool prune, bool allowDataLoss, string? tableId, CancellationToken cancellationToken, IProgress<string>? progress)
     {
         var credential = store.Credential(principal, projectId, connectionId);
-        var project = store.DatabaseProject(principal, projectId);
+        var environment = DatabaseEnvironments.Normalize(credential.Profile.Environment);
+        if (tableId != null && environment != DatabaseEnvironments.Development)
+        {
+            throw new InvalidOperationException("测试、预发布和生产环境只能整库推进不可变 V，不能执行单表结构同步。");
+        }
+        if (releaseVersion == null && environment != DatabaseEnvironments.Development)
+        {
+            throw new InvalidOperationException($"{DatabaseEnvironments.Name(environment)}环境只能选择已有 V 进行发布。");
+        }
+        if (releaseVersion is int version)
+        {
+            store.EnsurePromotionAllowed(principal, projectId, connectionId, version);
+        }
+        var project = store.DeploymentProject(principal, projectId, releaseVersion);
         var table = tableId == null ? null : project.Tables.SingleOrDefault(item => item.Id == tableId)
             ?? throw new InvalidOperationException("请先保存当前表设计，再开始比对。");
         var scope = table == null ? null : new TableDeploymentScope(table.Id, table.Schema, table.Name);
@@ -49,7 +70,10 @@ public sealed partial class SqlServerTools
             var options = Options(prune, allowDataLoss);
             var reductions = new List<string>();
             var expansions = measurement.Run("核验类型容量与数据风险", () => SchemaTypeExpansion.Assess(sourceBytes, targetBytes, credential.Profile.Database, prune, cancellationToken, reductions));
-            if (expansions.Count > 0) { options.BlockOnPossibleDataLoss = false; }
+            if (expansions.Count > 0)
+            {
+                options.BlockOnPossibleDataLoss = false;
+            }
             // 一次只读规划同时返回报告和脚本，避免两个 GenerateDeploy 调用重复计算部署计划。
             var result = measurement.Run("生成差异与同步脚本", () => DacServices.Script(source, target, credential.Profile.Database, new PublishOptions
             {
@@ -66,6 +90,20 @@ public sealed partial class SqlServerTools
                     () => { SchemaDeploymentBoundary.Validate(sourceBytes, targetBytes, scope, changes); return true; });
             }
             var warnings = DeploymentWarnings.Parse(xml);
+            if (allowDataLoss)
+            {
+                // 解锁后 DacFx 可能省略 DataIssue；额外生成一份只读保护报告用于风险审阅，执行脚本仍使用已解锁选项。
+                var protectedReport = measurement.Run("识别高风险 DDL", () => DacServices.Script(source, target, credential.Profile.Database, new PublishOptions
+                {
+                    DeployOptions = Options(prune, false),
+                    GenerateDeploymentReport = true,
+                    GenerateDeploymentScript = false,
+                    CancelToken = cancellationToken
+                }).DeploymentReport);
+                var protectedWarnings = DeploymentWarnings.Parse(XDocument.Parse(protectedReport))
+                    .Where(warning => warning.Code == "DataIssue");
+                warnings.AddRange(protectedWarnings.Where(candidate => !warnings.Any(existing => existing.RawXml == candidate.RawXml)));
+            }
             var emptyColumns = new List<EmptyColumnDeletion.Column>();
             var emptyColumnReasons = new List<string>();
             if (!allowDataLoss && changes.Count > 0)
@@ -101,11 +139,20 @@ public sealed partial class SqlServerTools
                 warnings.Insert(0, new("SafeTypeExpansion", "容量扩展，自动放行", "已核验整份计划仅包含可证明不缩小容量的类型扩展及说明变更，无需勾选允许丢失数据。索引、外键等有效性仍由数据库检查。",
                     expansions.Select(message => new DeploymentIssue("", message, [])).ToList(), ""));
             }
-            var plan = new DatabasePlan(Guid.NewGuid().ToString("N"), credential.Profile.Database, project.Revision,
-                DateTimeOffset.UtcNow.AddMinutes(15), changes, warnings, emptyColumns.Count > 0 ? EmptyColumnDeletion.Script(emptyColumns) : result.DatabaseScript, prune, allowDataLoss, scope, measurement.Timings.ToArray());
+            var dataLossRisks = DataLossAssessment.Assess(sourceBytes, targetBytes, prune, changes, warnings, reductions, cancellationToken);
+            if (emptyColumns.Count > 0)
+            {
+                // 专用路径已在实际库确认全部为 NULL，执行时还会在锁内复查，不属于数据损失授权。
+                dataLossRisks.RemoveAll(risk => risk.Code == "DropColumn");
+            }
+            var plan = new DatabasePlan(Guid.NewGuid().ToString("N"), credential.Profile.Database, project.Revision, releaseVersion, environment,
+                DateTimeOffset.UtcNow.AddMinutes(15), changes, warnings, dataLossRisks,
+                emptyColumns.Count > 0 ? EmptyColumnDeletion.Script(emptyColumns) : result.DatabaseScript, prune, allowDataLoss, scope, measurement.Timings.ToArray());
             store.RequireProject(principal, projectId, ProjectAccess.Database, Permission.Design);
-            plans[plan.Id] = new(plan, projectId, connectionId, credential.Profile.Revision, principal.UserId(), sourceBytes, ModelHash(targetBytes), targetBytes, emptyColumns);
-            store.LogDatabaseOperation(principal, projectId, "生成结构比对", $"{credential.Profile.Name} · {scope?.DisplayName ?? "整库"} · {changes.Count} 项差异");
+            plans[plan.Id] = new(plan, projectId, connectionId, credential.Profile.Revision, principal.UserId(), project,
+                sourceBytes, ModelHash(targetBytes), targetBytes, emptyColumns);
+            store.LogDatabaseOperation(principal, projectId, "生成结构比对",
+                $"{credential.Profile.Name} · {(releaseVersion is int release ? $"V{release}" : $"r{project.Revision}")} · {scope?.DisplayName ?? "整库"} · {changes.Count} 项差异");
             return plan;
         }, cancellationToken);
     }

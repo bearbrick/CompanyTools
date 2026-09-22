@@ -7,9 +7,17 @@ namespace DbStudio.Components;
 public partial class DatabaseToolsPanel
 {
     /// <summary>非空时锁定为单表模式；失效的 ID 不允许回退到整库。</summary>
-    [Parameter] public string? TableId { get; set; }
+    [Parameter]
+    public string? TableId
+    {
+        get; set;
+    }
     /// <summary>单表模式返回原设计页。</summary>
-    [Parameter] public EventCallback ReturnRequested { get; set; }
+    [Parameter]
+    public EventCallback ReturnRequested
+    {
+        get; set;
+    }
 
     private bool SingleTable => TableId != null;
     private TableDesign? ScopeTable => Project.Tables.SingleOrDefault(table => table.Id == TableId);
@@ -19,12 +27,17 @@ public partial class DatabaseToolsPanel
     {
         var stages = new Progress<string>(stage =>
         {
-            if (token.IsCancellationRequested || !busy) { return; }
+            if (token.IsCancellationRequested || !busy)
+            {
+                return;
+            }
             progress = stage + "…";
             StateHasChanged();
         });
         return SingleTable
             ? Tools.CompareTableAsync(Principal, Project.Id, connectionId, TableId!, prune, allowDataLoss, token, stages)
-            : Tools.CompareAsync(Principal, Project.Id, connectionId, prune, allowDataLoss, token, stages);
+            : SelectedReleaseVersion is int releaseVersion
+                ? Tools.CompareReleaseAsync(Principal, Project.Id, connectionId, releaseVersion, prune, allowDataLoss, token, stages)
+                : Tools.CompareAsync(Principal, Project.Id, connectionId, prune, allowDataLoss, token, stages);
     }
 }

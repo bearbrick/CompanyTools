@@ -13,6 +13,9 @@ public static class SchemaDeploymentOptions
     {
         CreateNewDatabase = false,
         BlockOnPossibleDataLoss = !allowDataLoss,
+        AllowTableRecreation = true,
+        GenerateSmartDefaults = false,
+        AllowUnsafeRowLevelSecurityDataMovement = false,
         IncludeTransactionalScripts = true,
         DropObjectsNotInSource = prune,
         DropConstraintsNotInSource = prune,

@@ -8,3 +8,15 @@
 .cleanup-result { border-color: #efd4cf; }
 .cleanup-execute { border-color: #efb9b0; background: #fff7f5; }
 .cleanup-execute button.danger { background: #b42318; border-color: #b42318; color: white; }
+.production-confirm { color: #9d241c; font-weight: 600; }
+.ddl-option-note { margin: -4px 0 4px; font-size: 12px; }
+.data-loss-review { margin: 16px 0; padding: 16px; border: 1px solid #efb9b0; border-left: 4px solid #b42318; border-radius: 7px; background: #fff7f5; }
+.data-loss-review > div { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
+.data-loss-review h3 { margin: 0; }
+.data-loss-review h3 span { color: #b42318; }
+.data-loss-review strong, .data-loss-confirm { color: #9d241c; }
+.data-loss-review ol { margin: 10px 0 0; padding-left: 22px; }
+.data-loss-review li { margin: 8px 0; }
+.data-loss-review li b { display: inline-block; min-width: 110px; }
+.data-loss-review code { margin-left: 10px; overflow-wrap: anywhere; }
+.data-loss-confirm { font-weight: 600; }
