@@ -178,6 +178,10 @@ public sealed partial class StudioStore
     }
 
     /// <summary>按预览规则合并所选变化，保留业务元数据；不删除设计独有表，也不覆盖无变化表。</summary>
+    /// <param name="principal">当前调用方身份。</param>
+    /// <param name="projectId">需要合并的项目标识。</param>
+    /// <param name="revision">预览时的项目修订，用于防止覆盖并发修改。</param>
+    /// <param name="snapshot">从目标数据库读取的结构快照。</param>
     /// <param name="selectedTableIds">本次反推的表 ID；空集合不合并，null 兼容原有全量调用。</param>
     public DesignProject ApplyDatabaseSnapshot(ClaimsPrincipal principal, string projectId, int revision, DatabaseSnapshot snapshot, IReadOnlyCollection<string>? selectedTableIds = null)
     {
@@ -195,16 +199,23 @@ public sealed partial class StudioStore
             project = DatabaseMerge.Apply(project, preview, selectedTableIds);
             foreach (var fk in project.Tables.SelectMany(t => t.ForeignKeys))
             {
-                if (project.Tables.Any(t => t.Id == fk.TargetTableId)) continue;
+                if (project.Tables.Any(t => t.Id == fk.TargetTableId))
+                {
+                    continue;
+                }
+
                 var target = preview.Tables.FirstOrDefault(t => t.Table.Id == fk.TargetTableId)?.Table;
-                if (target != null) throw new InvalidOperationException($"外键 {fk.Name} 引用 {target.Schema}.{target.Name}，请一并勾选该引用表后重新合并。");
+                if (target != null)
+                {
+                    throw new InvalidOperationException($"外键 {fk.Name} 引用 {target.Schema}.{target.Name}，请一并勾选该引用表后重新合并。");
+                }
             }
             var errors = project.Tables.SelectMany(t => SqlServerDdl.Validate(project, t)).ToList();
             if (errors.Count > 0)
             {
                 throw new InvalidOperationException(string.Join("\n", errors));
             }
-            if (CommitProject(db, project, revision))
+            if (CommitProject(db, project, revision, new(actor.DisplayName, "database", "从数据库反推设计", $"{preview.Tables.Count(t => t.Status != "无变化" && (selectedTableIds == null || selectedTableIds.Contains(t.SourceId)))} 张表")))
             {
                 Log(db, actor.DisplayName, "从数据库反推设计", $"{project.Name} · {preview.Tables.Count(t => t.Status != "无变化" && (selectedTableIds == null || selectedTableIds.Contains(t.SourceId)))} 张表", projectId);
             }

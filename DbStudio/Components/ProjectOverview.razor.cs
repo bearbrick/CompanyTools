@@ -6,10 +6,39 @@ namespace DbStudio.Components;
 /// <summary>只根据当前成员已获授权的项目快照展示概览，不连接实际数据库。</summary>
 public partial class ProjectOverview
 {
+    /// <summary>当前已授权的已保存项目快照。</summary>
     [Parameter, EditorRequired] public DesignProject Project { get; set; } = default!;
-    [Parameter] public bool CanDesign { get; set; }
-    [Parameter] public EventCallback NewTableRequested { get; set; }
-    [Parameter] public EventCallback RefreshRequested { get; set; }
+    /// <summary>当前成员是否可进入设计操作。</summary>
+    [Parameter]
+    public bool CanDesign
+    {
+        get; set;
+    }
+    /// <summary>用户请求创建新表时的回调。</summary>
+    [Parameter]
+    public EventCallback NewTableRequested
+    {
+        get; set;
+    }
+    /// <summary>用户请求刷新项目统计时的回调。</summary>
+    [Parameter]
+    public EventCallback RefreshRequested
+    {
+        get; set;
+    }
+    /// <summary>用户请求打开 ER 图时的回调。</summary>
+    [Parameter]
+    public EventCallback DiagramRequested
+    {
+        get; set;
+    }
+    /// <summary>用户请求打开版本历史时的回调。</summary>
+    [Parameter]
+    public EventCallback VersionRequested
+    {
+        get; set;
+    }
+    /// <summary>当前项目最近的审计活动。</summary>
     [Parameter] public IReadOnlyList<AuditItem> Activities { get; set; } = [];
 
     private List<(string Label, int Value, string Unit)> Metrics = [];

@@ -13,7 +13,7 @@
     }
     @if (busy) { <div class="tools-progress" role="status">@progress <button @onclick="Cancel">取消操作</button></div> }
     <fieldset disabled="@busy">
-        <div class="connection-bar"><label>当前连接<StudioSelect Label="当前数据库连接" Value="@connectionId" ValueChanged="SelectConnection" Items="ConnectionOptions" Placeholder="先添加数据库连接" /></label><button disabled="@(connectionId == "")" @onclick="Test">测试连接</button><button @onclick="RefreshConnections">刷新连接</button>@if (manage) { <button @onclick="NewConnection">新增连接</button><button disabled="@(connectionId == "")" @onclick="EditConnection">编辑连接</button><button class="text-button danger" disabled="@(connectionId == "")" @onclick="RequestDeleteConnection">删除连接</button> }</div>
+        <div class="connection-bar"><label>当前连接<StudioSelect Label="当前数据库连接" Value="@connectionId" ValueChanged="SelectConnection" Items="ConnectionOptions" Placeholder="先添加数据库连接" /></label>@if (SelectedVersion is { } status) { <span class="subtle-tag">@(status.ProjectRevision == 0 ? "尚未成功同步" : $"最后成功 r{status.ProjectRevision}" + (status.ReleaseVersion is int version ? $" · V{version}" : " · 局部"))@(status.Status == "failed" ? " · 最新执行失败" : "")</span> }<button disabled="@(connectionId == "")" @onclick="Test">测试连接</button><button @onclick="RefreshConnections">刷新连接</button>@if (manage) { <button @onclick="NewConnection">新增连接</button><button disabled="@(connectionId == "")" @onclick="EditConnection">编辑连接</button><button class="text-button danger" disabled="@(connectionId == "")" @onclick="RequestDeleteConnection">删除连接</button> }</div>
         @if (deleting != null)
         {
             <section class="connection-form" role="alertdialog" aria-label="删除连接确认">
@@ -87,6 +87,7 @@
     [Parameter] public EventCallback<DesignProject> Saved { get; set; }
     [Parameter] public EventCallback<bool> BusyChanged { get; set; }
     private List<DatabaseConnection> connections = [];
+    private IReadOnlyList<DatabaseVersionStatus> databaseVersions = [];
     private string connectionId = "", password = "", authentication = "windows", problem = "", notice = "", progress = "", confirmedDatabase = "";
     private string cleanupCategory = TableDataCategories.Business, cleanupConfirmedDatabase = "";
     private bool busy, manage, design, prune, allowDataLoss, reviewed, cleanupReviewed;
@@ -99,6 +100,7 @@
     private DataCleanupPlan? cleanupPlan;
     private CancellationTokenSource? operation;
     private DatabaseConnection? Selected => connections.FirstOrDefault(c => c.Id == connectionId);
+    private DatabaseVersionStatus? SelectedVersion => databaseVersions.FirstOrDefault(item => item.ConnectionId == connectionId);
     private List<SelectOption> ConnectionOptions => connections.Select(c => new SelectOption(c.Id, c.Name, c.Server + " / " + c.Database)).ToList();
     private static readonly List<SelectOption> AuthenticationOptions = [new("windows", "Windows 集成认证"), new("sql", "SQL Server 账号密码")];
     private static readonly List<SelectOption> CleanupCategoryOptions = TableDataCategories.All
@@ -110,7 +112,7 @@
 
     protected override void OnInitialized()
     {
-        Handle(() => { connections = Store.Connections(Principal, Project.Id); connectionId = connections.FirstOrDefault()?.Id ?? ""; var access = Store.AccessTo(Principal, Project.Id); manage = access.HasFlag(ProjectAccess.Manage); design = access.HasFlag(ProjectAccess.Design); });
+        Handle(() => { connections = Store.Connections(Principal, Project.Id); databaseVersions = Store.DatabaseVersions(Principal, Project.Id); connectionId = connections.FirstOrDefault()?.Id ?? ""; var access = Store.AccessTo(Principal, Project.Id); manage = access.HasFlag(ProjectAccess.Manage); design = access.HasFlag(ProjectAccess.Design); });
     }
     private void SelectConnection(string value) { connectionId = value; snapshot = null; edit = deleting = null; password = ""; InvalidatePlan(); InvalidateCleanupPlan(); notice = problem = ""; }
     private void InvalidatePlan() { plan = null; reviewed = false; confirmedDatabase = ""; }
@@ -122,6 +124,7 @@
     private void RefreshConnections() => Handle(() =>
     {
         connections = Store.Connections(Principal, Project.Id);
+        databaseVersions = Store.DatabaseVersions(Principal, Project.Id);
         SelectConnection(connections.FirstOrDefault(c => c.Id == connectionId)?.Id ?? connections.FirstOrDefault()?.Id ?? "");
         notice = "连接列表已刷新。";
     });
@@ -133,10 +136,11 @@
         if (deleting == null) { return; }
         Store.DeleteConnection(Principal, Project.Id, deleting.Id, deleting.Revision);
         connections = Store.Connections(Principal, Project.Id);
+        databaseVersions = Store.DatabaseVersions(Principal, Project.Id);
         SelectConnection(connections.FirstOrDefault()?.Id ?? "");
         notice = "连接配置已删除，实际数据库未改变。";
     });
-    private void SaveConnection() => Handle(() => { edit!.IntegratedSecurity = authentication == "windows"; var saved = Store.SaveConnection(Principal, edit, password); connections = Store.Connections(Principal, Project.Id); SelectConnection(saved.Id); password = ""; notice = "连接配置已保存，可以测试连接。"; });
+    private void SaveConnection() => Handle(() => { edit!.IntegratedSecurity = authentication == "windows"; var saved = Store.SaveConnection(Principal, edit, password); connections = Store.Connections(Principal, Project.Id); databaseVersions = Store.DatabaseVersions(Principal, Project.Id); SelectConnection(saved.Id); password = ""; notice = "连接配置已保存，可以测试连接。"; });
     private Task Test() => Perform("正在测试连接…", async token => notice = "连接成功：" + await Tools.TestAsync(Principal, Project.Id, connectionId, token));
     private Task Reverse() => Perform("正在读取数据库结构…", async token => { snapshot = null; InvalidatePlan(); snapshotRevision = Project.Revision; snapshot = await Tools.ReverseAsync(Principal, Project.Id, connectionId, token); reversePreview = DatabaseMerge.Preview(Project, snapshot); });
     private Task Compare() => Perform("正在比对结构并生成脚本…", async token => { snapshot = null; InvalidatePlan(); plan = await CompareScopeAsync(token); });
@@ -156,7 +160,7 @@
     private Task Execute() => Perform("正在同步结构，请等待数据库返回结果…", async token =>
     {
         var current = plan!;
-        try { await Tools.ExecuteAsync(Principal, Project.Id, current.Id, confirmedDatabase, token); notice = "结构同步成功。再次比对可确认最新状态。"; }
+        try { var result = await Tools.ExecuteAsync(Principal, Project.Id, current.Id, confirmedDatabase, token); databaseVersions = Store.DatabaseVersions(Principal, Project.Id); notice = result.Message; }
         finally { InvalidatePlan(); }
     });
     private Task DownloadPlan() => JS.InvokeVoidAsync("studio.download", $"{plan!.Database}-sync.sql", plan.Script, "text/plain;charset=utf-8").AsTask();

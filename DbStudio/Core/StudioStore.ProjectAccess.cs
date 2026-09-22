@@ -142,7 +142,7 @@ public sealed partial class StudioStore
             var project = ReadProject(db, projectId);
             project.Name = name.Trim();
             project.Description = description.Trim();
-            if (CommitProject(db, project, revision))
+            if (CommitProject(db, project, revision, new(actor.DisplayName, "design", "修改项目信息", project.Name)))
             {
                 Log(db, actor.DisplayName, "修改项目信息", project.Name, projectId);
             }
@@ -177,7 +177,7 @@ public sealed partial class StudioStore
             // 原名保存不重排模块，也不把历史隐式模块转换成一次设计变更。
             if (oldName == name)
             {
-                CommitProject(db, project, revision);
+                CommitProject(db, project, revision, new(actor.DisplayName, "design", "保存模块", project.Name));
                 tx.Commit();
                 return project;
             }
@@ -195,7 +195,7 @@ public sealed partial class StudioStore
             {
                 table.Module = name;
             }
-            if (CommitProject(db, project, revision))
+            if (CommitProject(db, project, revision, new(actor.DisplayName, "design", oldName == null ? "创建模块" : "重命名模块", name)))
             {
                 Log(db, actor.DisplayName, oldName == null ? "创建模块" : "重命名模块", $"{project.Name} / {name}", projectId);
             }
@@ -210,7 +210,7 @@ public sealed partial class StudioStore
     /// 字段顺序、备注及业务说明属于设计内容，发生变化仍需升级修订号。
     /// </summary>
     /// <returns>实际写入返回 true；内容未变返回 false，调用方不应记录变更审计。</returns>
-    private bool CommitProject(SqliteConnection db, DesignProject project, int revision)
+    private bool CommitProject(SqliteConnection db, DesignProject project, int revision, RevisionCommitInfo? info = null)
     {
         var saved = ReadProject(db, project.Id);
         if (project.Revision != revision || saved.Revision != revision)
@@ -230,6 +230,7 @@ public sealed partial class StudioStore
         {
             throw new InvalidOperationException("保存冲突，请刷新后重试。");
         }
+        RecordRevision(db, project, info ?? RevisionCommitInfo.Design);
         return true;
     }
 }

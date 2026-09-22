@@ -53,7 +53,7 @@ public sealed partial class SqlServerTools(StudioStore store)
     /// 执行服务端计划。必须提交精确数据库名；拒绝过期、跨用户、连接变更、项目变更、目标结构变更和重复提交。
     /// DacFx 再次验证依赖和数据丢失条件，事务提交失败时由部署引擎回滚。
     /// </summary>
-    public async Task ExecuteAsync(ClaimsPrincipal principal, string projectId, string planId, string confirmedDatabase, CancellationToken cancellationToken = default)
+    public async Task<DatabaseDeploymentResult> ExecuteAsync(ClaimsPrincipal principal, string projectId, string planId, string confirmedDatabase, CancellationToken cancellationToken = default)
     {
         await executionGate.WaitAsync(cancellationToken);
         try
@@ -73,7 +73,7 @@ public sealed partial class SqlServerTools(StudioStore store)
                 plans.TryRemove(planId, out _);
                 throw new InvalidOperationException("计划已过期，或项目／连接已修改，请重新比对。");
             }
-            await Task.Run(() =>
+            return await Task.Run(() =>
             {
                 var service = new DacServices(credential.ConnectionString);
                 var current = Extract(service, credential.Profile.Database, cancellationToken);
@@ -121,17 +121,25 @@ public sealed partial class SqlServerTools(StudioStore store)
                 plans.TryRemove(planId, out _);
                 var actor = store.RequireProject(principal, projectId, ProjectAccess.Database, Permission.Design);
                 store.LogDatabaseOperation(principal, projectId, "开始同步结构", $"{credential.Profile.Name} · 计划 {planId}");
+                var deploymentId = store.BeginDeployment(actor.DisplayName, projectId, credential.Profile, project.Revision, plan.View.Scope?.DisplayName ?? "整库");
                 try
                 {
                     if (plan.EmptyColumns.Count > 0)
                     {
                         EmptyColumnDeletion.Execute(credential.ConnectionString, plan.EmptyColumns, cancellationToken);
                     }
-                    else { service.Deploy(source, credential.Profile.Database, true, options, cancellationToken); }
-                    store.LogDatabaseResult(actor.DisplayName, projectId, "同步结构成功", credential.Profile.Name);
+                    else
+                    {
+                        service.Deploy(source, credential.Profile.Database, true, options, cancellationToken);
+                    }
+                    var verification = VerifyPublishedStructure(service, credential.Profile.Database, project, cancellationToken);
+                    var result = store.CompleteDeployment(deploymentId, project, actor.DisplayName, verification.FullyVerified, verification.Detail);
+                    store.LogDatabaseResult(actor.DisplayName, projectId, verification.FullyVerified ? "发布数据库版本" : "局部同步结构", $"{credential.Profile.Name} · {result.Message}");
+                    return result;
                 }
-                catch
+                catch (Exception ex)
                 {
+                    store.FailDeployment(deploymentId, "同步失败：" + ex.Message);
                     store.LogDatabaseResult(actor.DisplayName, projectId, "同步结构失败", $"{credential.Profile.Name} · 请检查数据库状态后重新比对");
                     throw;
                 }
@@ -144,7 +152,10 @@ public sealed partial class SqlServerTools(StudioStore store)
     public static byte[] BuildPackage(DesignProject project, string? collation = null)
     {
         var modelOptions = new TSqlModelOptions();
-        if (!string.IsNullOrWhiteSpace(collation)) { modelOptions.Collation = collation; }
+        if (!string.IsNullOrWhiteSpace(collation))
+        {
+            modelOptions.Collation = collation;
+        }
         using var model = new TSqlModel(SqlServerVersion.Sql160, modelOptions);
         var script = new StringBuilder();
         foreach (var schema in project.Tables.Select(t => t.Schema).Distinct(StringComparer.OrdinalIgnoreCase).Where(s => !s.Equals("dbo", StringComparison.OrdinalIgnoreCase)))

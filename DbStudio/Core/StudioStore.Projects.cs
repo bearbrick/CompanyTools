@@ -71,6 +71,7 @@ public sealed partial class StudioStore
                 ("$id", project.Id),
                 ("$name", project.Name),
                 ("$doc", JsonSerializer.Serialize(project, ModelJson.Options)));
+            RecordInitialRevision(db, project, actor.DisplayName, "新建项目", project.Name);
             AddProjectOwner(db, project.Id, actor.Id);
             Log(db, actor.DisplayName, "新建项目", project.Name, project.Id);
             tx.Commit();
@@ -110,7 +111,7 @@ public sealed partial class StudioStore
 
                 if (project.Tables.Any(t => t.Id != table.Id && t.ForeignKeys.Any(f => f.TargetTableId == table.Id)))
                 {
-                    throw new InvalidOperationException("此表仍被其他表的外键引用，请先解除引用。");
+                    throw new InvalidOperationException("此表仍被其他表的关系引用，请先解除引用。");
                 }
 
                 project.Tables.RemoveAt(old);
@@ -137,12 +138,13 @@ public sealed partial class StudioStore
                 }
             }
             // 无实际变化时不写文档、不增加版本，也不产生虚假的变更记录。
-            if (CommitProject(db, project, revision))
+            var action = delete ? "删除表" : old < 0 ? "新增表" : "保存设计";
+            if (CommitProject(db, project, revision, new(actor.DisplayName, "design", action, $"{table.Schema}.{table.Name}")))
             {
                 Log(
                     db,
                     actor.DisplayName,
-                    delete ? "删除表" : old < 0 ? "新增表" : "保存设计",
+                    action,
                     $"{project.Name} / {table.Schema}.{table.Name} · r{project.Revision}", projectId);
             }
             tx.Commit();

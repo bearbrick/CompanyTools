@@ -31,7 +31,7 @@ public sealed partial class StudioStore
             {
                 project.Modules = names.ToList();
             }
-            if (CommitProject(db, project, revision))
+            if (CommitProject(db, project, revision, new(actor.DisplayName, "design", "调整模块顺序", $"{names.Count} 个模块")))
             {
                 Log(db, actor.DisplayName, "调整模块顺序", $"{project.Name} · {names.Count} 个模块", projectId);
             }

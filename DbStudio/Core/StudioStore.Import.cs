@@ -62,6 +62,7 @@ public sealed partial class StudioStore
             using var transaction = db.BeginTransaction();
             Execute(db, "INSERT INTO Projects VALUES($id,$name,1,$doc)",
                 ("$id", project.Id), ("$name", project.Name), ("$doc", JsonSerializer.Serialize(project, ModelJson.Options)));
+            RecordInitialRevision(db, project, actor.DisplayName, "导入项目备份", $"{oldName} → {project.Name}");
             AddProjectOwner(db, project.Id, actor.Id);
             Log(db, actor.DisplayName, "导入项目备份", $"{oldName} → {project.Name} · {project.Tables.Count} 张表", project.Id);
             transaction.Commit();

@@ -1,7 +1,7 @@
 <section class="project-overview" aria-label="项目首页">
     <header class="overview-header">
         <div><span class="eyebrow">项目首页 · SQL Server</span><h1>@Project.Name</h1><p>@(string.IsNullOrWhiteSpace(Project.Description) ? "在这里查看项目概况，选择数据表继续设计。" : Project.Description)</p></div>
-        <div class="overview-actions"><button @onclick="RefreshRequested"><Icon Name="arrow-clockwise" /> 刷新统计</button>@if (CanDesign) { <button class="primary" @onclick="NewTableRequested"><Icon Name="plus-lg" /> 新建表</button> }</div>
+        <div class="overview-actions"><button @onclick="DiagramRequested"><Icon Name="diagram-3" /> ER 关系图</button><button @onclick="VersionRequested"><Icon Name="arrow-clockwise" /> 版本历史</button><button @onclick="RefreshRequested"><Icon Name="arrow-clockwise" /> 刷新统计</button>@if (CanDesign) { <button class="primary" @onclick="NewTableRequested"><Icon Name="plus-lg" /> 新建表</button> }</div>
     </header>
     <div class="overview-caption"><span>基于已保存的项目设计</span><span>版本 r@(Project.Revision)</span></div>
     <div class="overview-metrics">

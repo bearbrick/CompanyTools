@@ -1,0 +1,129 @@
+@using DbStudio.Core
+@inject StudioStore Store
+
+<section class="version-history">
+    <header class="version-header">
+        <div><span class="eyebrow">VERSION HISTORY</span><h1>@(TableId == null ? "项目版本与恢复" : "数据表版本与恢复")</h1><p>修订 r 记录每次设计保存；发布 V 只在项目管理范围内的整库校验一致后产生。恢复会新建一个 r，不会改写历史。</p></div>
+        <button @onclick="Reload"><Icon Name="arrow-clockwise" /> 刷新</button>
+    </header>
+    @if (problem != "") { <pre class="settings-error" role="alert">@problem</pre> }
+    @if (notice != "") { <p class="settings-notice" role="status">@notice</p> }
+    @if (summary != null)
+    {
+        <div class="version-cards">
+            <article><span>当前设计</span><strong>r@summary.CurrentRevision</strong><small>每次有效保存 +1</small></article>
+            <article><span>最新发布</span><strong>@(summary.LatestReleaseVersion == 0 ? "尚未发布" : $"V{summary.LatestReleaseVersion}")</strong><small>@(summary.LatestReleaseRevision is int revision ? $"来自设计 r{revision}" : "同步并通过整库校验后生成")</small></article>
+            <article><span>发布差距</span><strong>@PendingText</strong><small>@(IsPublished ? "当前设计已有发布快照" : "当前设计还没有发布为 V")</small></article>
+        </div>
+
+        @if (TableId == null && CanViewDatabases)
+        {
+            <section class="version-panel"><div class="section-title"><div><h2>数据库对应版本</h2><p class="muted">显示每个连接最后成功同步的 r 与 V；最新执行若失败会单独标记。库被手工修改后需重新比对，本记录不代替实时结构扫描。</p></div></div>
+                <div class="version-table-scroll"><table class="list-table"><thead><tr><th>连接 / 数据库</th><th>状态</th><th>设计修订</th><th>发布版本</th><th>范围</th><th>完成时间</th></tr></thead><tbody>
+                    @foreach (var database in databases)
+                    {
+                        <tr><td><strong>@database.ConnectionName</strong><small>@database.Server / @database.Database</small></td><td><span class="status @(database.Status == "succeeded" ? "ok" : "")">@StatusName(database.Status)</span></td><td>@(database.ProjectRevision == 0 ? "—" : $"r{database.ProjectRevision}")</td><td>@(database.ReleaseVersion is int version ? $"V{version}" : database.ProjectRevision == 0 ? "—" : "局部同步")</td><td>@(database.Scope == "" ? "—" : database.Scope)</td><td>@LocalTime(database.CompletedAt)</td></tr>
+                    }
+                </tbody></table></div>
+                @if (databases.Count == 0) { <div class="empty-state">尚未配置数据库连接</div> }
+            </section>
+        }
+
+        <div class="version-layout">
+            <section class="version-panel revision-list"><div class="section-title"><div><h2>设计修订</h2><p class="muted">选择左侧起始 r，再在右侧选择目标 r，可比较任意两个修订。</p></div></div>
+                @foreach (var entry in summary.Revisions)
+                {
+                    <button class="revision-row @(selectedRevision == entry.Revision ? "active" : "")" @onclick="() => SelectRevision(entry.Revision)">
+                        <span class="revision-number">r@entry.Revision</span><span><b>@entry.Action</b><small>@LocalTime(entry.Time) · @(entry.Actor == "" ? "系统" : entry.Actor)</small></span>
+                        @if (entry.ReleaseVersion is int version) { <em>V@version</em> }
+                    </button>
+                }
+                @if (summary.Revisions.Count < summary.TotalRevisionCount && revisionLimit < 2_000)
+                {
+                    <button class="load-revisions" @onclick="LoadMoreRevisions">加载更早修订（还有 @(summary.TotalRevisionCount - summary.Revisions.Count) 条）</button>
+                }
+                else if (summary.Revisions.Count < summary.TotalRevisionCount)
+                {
+                    <p class="muted">已显示最近 2000 条修订；更早历史需通过指定修订查询。</p>
+                }
+            </section>
+            <section class="version-panel diff-panel">
+                <div class="section-title"><div><h2>r@selectedRevision → r@targetRevision</h2><p class="muted">@(TableId == null ? "项目整体差异" : "仅显示当前数据表差异")</p></div>
+                    <label class="target-revision">对比到<select @bind="targetRevision" @bind:after="LoadDiff">@foreach (var entry in summary.Revisions) { <option value="@entry.Revision">r@entry.Revision@(entry.Revision == summary.CurrentRevision ? "（当前）" : "")</option> }</select></label>
+                    @if (selectedRevision != Project.Revision)
+                    {
+                        <button class="danger" @onclick="RequestRestore" disabled="@(!CanRestore)">@(TableId == null ? "恢复整个项目" : "恢复这张表")</button>
+                    }
+                </div>
+                @if (confirming)
+                {
+                    <div class="restore-confirm" role="alert"><b>确认从 r@selectedRevision 恢复？</b><p>当前 r@Project.Revision 不会被覆盖；系统会把恢复结果保存为新修订。数据库不会自动变更。</p><button @onclick="() => confirming = false">取消</button><button class="primary" @onclick="Restore">确认恢复</button></div>
+                }
+                @if (diff == null) { <p class="muted">正在读取差异…</p> }
+                else if (diff.Items.Count == 0) { <div class="empty-state">与当前范围没有差异</div> }
+                else
+                {
+                    <div class="diff-list">@foreach (var item in diff.Items) { <article><span class="diff-kind">@item.Kind</span><div><b>@item.ObjectName</b><small>@item.Scope</small>@if (item.Before != "") { <p><del>@Compact(item.Before)</del></p> }@if (item.After != "") { <p><ins>@Compact(item.After)</ins></p> }</div></article> }</div>
+                }
+            </section>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public DesignProject Project { get; set; } = default!;
+    [Parameter, EditorRequired] public System.Security.Claims.ClaimsPrincipal Principal { get; set; } = default!;
+    [Parameter] public string? TableId { get; set; }
+    [Parameter] public bool CanRestore { get; set; }
+    [Parameter] public bool CanViewDatabases { get; set; }
+    [Parameter] public EventCallback<DesignProject> Restored { get; set; }
+    private ProjectVersionSummary? summary;
+    private ProjectRevisionDiff? diff;
+    private IReadOnlyList<DatabaseVersionStatus> databases = [];
+    private int selectedRevision;
+    private int targetRevision;
+    private int revisionLimit = 100;
+    private bool confirming;
+    private string problem = "", notice = "";
+    private bool IsPublished => summary?.LatestReleaseRevision == Project.Revision;
+    private string PendingText => summary?.LatestReleaseRevision is int published ? $"r{Project.Revision - published}" : $"r{Project.Revision}";
+
+    protected override void OnParametersSet() => Reload();
+    private void Reload()
+    {
+        problem = "";
+        try
+        {
+            summary = Store.Versions(Principal, Project.Id, revisionLimit);
+            databases = TableId == null && CanViewDatabases ? Store.DatabaseVersions(Principal, Project.Id) : [];
+            selectedRevision = summary.Revisions.Any(r => r.Revision == selectedRevision) ? selectedRevision : summary.Revisions.Skip(1).FirstOrDefault()?.Revision ?? summary.CurrentRevision;
+            targetRevision = summary.Revisions.Any(r => r.Revision == targetRevision) ? targetRevision : summary.CurrentRevision;
+            LoadDiff();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { problem = ex.Message; }
+    }
+    private void SelectRevision(int revision) { selectedRevision = revision; confirming = false; LoadDiff(); }
+    private void LoadMoreRevisions() { revisionLimit = Math.Min(2_000, revisionLimit + 100); Reload(); }
+    private void LoadDiff()
+    {
+        try { diff = Store.RevisionDiff(Principal, Project.Id, selectedRevision, targetRevision, TableId); }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { problem = ex.Message; diff = null; }
+    }
+    private void RequestRestore() => confirming = true;
+    private async Task Restore()
+    {
+        try
+        {
+            var restored = TableId == null
+                ? Store.RestoreProjectRevision(Principal, Project.Id, Project.Revision, selectedRevision)
+                : Store.RestoreTableRevision(Principal, Project.Id, Project.Revision, selectedRevision, TableId);
+            confirming = false;
+            notice = restored.Revision == Project.Revision ? "选定内容与当前设计一致，未创建空修订。" : $"已从 r{selectedRevision} 恢复并保存为 r{restored.Revision}。";
+            await Restored.InvokeAsync(restored);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException) { problem = ex.Message; }
+    }
+    private static string StatusName(string value) => value switch { "succeeded" => "同步成功", "failed" => "同步失败", "running" => "执行中", _ => "尚未同步" };
+    private static string LocalTime(string value) => DateTimeOffset.TryParse(value, out var time) ? time.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "—";
+    private static string Compact(string value) => value.Length <= 500 ? value : value[..500] + "…";
+}

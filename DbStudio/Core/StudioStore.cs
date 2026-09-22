@@ -92,6 +92,7 @@ public sealed partial class StudioStore
                 ("$name", project.Name),
                 ("$doc", JsonSerializer.Serialize(project, ModelJson.Options)));
         }
+        InitializeVersioning(db);
     }
 
     /// <summary>

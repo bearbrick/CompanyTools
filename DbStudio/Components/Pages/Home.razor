@@ -10,6 +10,12 @@
         <span class="header-divider"></span>
         <StudioSelect Class="project-picker" Label="选择项目" Value="@project?.Id" ValueChanged="ChooseProject" Items="ProjectOptions" />
         <button class="project-settings-entry" disabled="@(project == null)" @onclick="() => OpenProjectSettings()"><Icon Name="pencil" /> 项目设置</button>
+        <button class="project-settings-entry" disabled="@(project == null || databaseBusy)" @onclick="OpenRelationshipDiagram"><Icon Name="diagram-3" /> ER 图</button>
+        <button class="project-settings-entry" disabled="@(project == null || databaseBusy)" @onclick="OpenVersions"><Icon Name="arrow-clockwise" /> 版本</button>
+        @if (project != null)
+        {
+            <ProjectFieldSearch @key="(project.Id, project.Revision)" Project="project" ResultSelected="OpenFieldSearchResult" />
+        }
         <div class="header-actions">
             <div class="header-menu">
             <button aria-expanded="@(menu == "export" ? "true" : "false")" aria-controls="export-dropdown" @onclick='() => menu = menu == "export" ? "" : "export"'><Icon Name="box-arrow-up-right" /> 备份与导入 <Icon Name="chevron-down" /></button>
@@ -77,10 +83,18 @@
             <div class="sidebar-footer"><span><Icon Name="database" /> @(project?.Tables.Count ?? 0) 张表</span><button title="刷新项目" aria-label="刷新项目" @onclick="Refresh"><Icon Name="arrow-clockwise" /></button></div>
             @if (Can(Permission.Projects)) { <button class="project-add" @onclick="OpenNewProject"><Icon Name="plus-lg" /> 创建项目</button> }
         </aside>
-        <main class="main-content @(view == "overview" ? "overview-content" : "")">
+        <main class="main-content @(view == "overview" ? "overview-content" : view == "diagram" ? "diagram-content" : "")">
         @if (view == "overview" && project != null)
         {
-            <ProjectOverview @key="project.Id" Project="project" CanDesign="CanDesign" NewTableRequested="NewTable" RefreshRequested="Refresh" Activities="projectActivity" />
+            <ProjectOverview @key="project.Id" Project="project" CanDesign="CanDesign" NewTableRequested="NewTable" RefreshRequested="Refresh" DiagramRequested="OpenRelationshipDiagram" VersionRequested="OpenVersions" Activities="projectActivity" />
+        }
+        else if (view == "diagram" && project != null)
+        {
+            <ProjectRelationshipDiagram @key="(project.Id, project.Revision)" Project="project" TableRequested="ChooseTable" />
+        }
+        else if (view == "versions" && project != null)
+        {
+            <ProjectVersionHistory @key="(project.Id, project.Revision)" Project="project" Principal="principal" CanRestore="@(CanDesign && projectAccess.HasFlag(ProjectAccess.Manage))" CanViewDatabases="@projectAccess.HasFlag(ProjectAccess.Database)" Restored="VersionRestored" />
         }
         else if ((view == "database" || view == "table-database") && project != null)
         {
@@ -186,7 +200,7 @@
             }
             @if (tab == "history")
             {
-                <div class="constraint-content"><div class="section-title"><div><h2>操作记录</h2><p class="muted">当前项目最近 100 条操作，按时间倒序排列。</p></div><button @onclick="() => audit = Store.Audit(principal, project.Id)"><Icon Name="arrow-clockwise" /> 刷新</button></div><table class="list-table"><thead><tr><th>时间</th><th>操作人</th><th>操作</th><th>内容</th></tr></thead><tbody>@foreach (var entry in audit) { <tr><td>@DateTimeOffset.Parse(entry.Time).ToLocalTime().ToString("MM-dd HH:mm:ss")</td><td>@entry.Actor</td><td>@entry.Action</td><td>@entry.Detail</td></tr> }</tbody></table>@if (audit.Count == 0) { <div class="empty-state">尚无操作记录</div> }</div>
+                <ProjectVersionHistory @key="(project.Id, project.Revision, table.Id)" Project="project" Principal="principal" TableId="table.Id" CanRestore="CanDesign" Restored="VersionRestored" />
             }
         }
         else

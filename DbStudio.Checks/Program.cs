@@ -86,11 +86,33 @@ Check("Failed save is transactional", store.Projects(admin!).First(p => p.Id == 
 var restarted = new StudioStore(env, config);
 Check("Data persists across new store instances", restarted.Projects(admin!).First(p => p.Id == project.Id).Tables.Count == 2);
 
+// 修订历史必须保存完整快照，恢复只能产生新 r，不能覆盖或伪造已发布 V。
+var versionProject = store.NewProject(admin!, "版本测试", "修订差异与恢复");
+Check("New project records revision one snapshot", store.Versions(admin!, versionProject.Id).Revisions.Select(r => r.Revision).SequenceEqual([1]));
+var versionTable = new TableDesign { Name = "Versioned", Label = "版本表", Columns = [new() { Name = "Id", Label = "主键", Type = "int", Nullable = false, PrimaryKeyOrder = 1 }] };
+versionProject = store.SaveTable(admin!, versionProject.Id, versionProject.Revision, versionTable);
+var editedVersionTable = ModelJson.Clone(versionTable);
+editedVersionTable.Comment = "r3 备注";
+versionProject = store.SaveTable(admin!, versionProject.Id, versionProject.Revision, editedVersionTable);
+var versionSummary = store.Versions(admin!, versionProject.Id);
+Check("Every actual design save records a revision snapshot", versionSummary.CurrentRevision == 3 && versionSummary.Revisions.Select(r => r.Revision).SequenceEqual([3, 2, 1]));
+Check("Any two revisions can be compared", store.RevisionDiff(admin!, versionProject.Id, 2, 3).Items.Any(item => item.ObjectName == "备注"));
+versionProject = store.RestoreTableRevision(admin!, versionProject.Id, versionProject.Revision, 2, versionTable.Id);
+Check("Table restore creates a new revision without rewinding", versionProject.Revision == 4 && versionProject.Tables.Single().Comment == "");
+versionProject = store.RestoreProjectRevision(admin!, versionProject.Id, versionProject.Revision, 1);
+var restoredVersions = store.Versions(admin!, versionProject.Id);
+Check("Whole project restore creates a new revision and preserves history", versionProject.Revision == 5 && versionProject.Tables.Count == 0 && restoredVersions.Revisions.Count == 5);
+Check("Restore never creates a published version", restoredVersions.LatestReleaseVersion == 0 && restoredVersions.Releases.Count == 0);
+Check("Revision metadata supports bounded loading", store.Versions(admin!, versionProject.Id, 2) is { TotalRevisionCount: 5, Revisions.Count: 2 });
+Reject<ArgumentOutOfRangeException>("Revision metadata rejects unbounded loading", () => store.Versions(admin!, versionProject.Id, 2_001));
+
 store.SaveUser(admin!, new("reader-test", "reader.test", "只读测试", "reader", true), "ReadOnly12345!");
 var reader = store.Login("reader.test", "ReadOnly12345!")!;
 Check("Unassigned reader sees no projects", store.Projects(reader).Count == 0);
 store.SaveProjectMember(admin!, project.Id, "reader.test", ProjectAccess.Read);
 Check("Reader sees only assigned project", store.Projects(reader).Select(p => p.Id).SequenceEqual([project.Id]));
+Check("Reader can inspect project revision history", store.Versions(reader, project.Id).CurrentRevision == project.Revision);
+Reject<UnauthorizedAccessException>("Reader cannot inspect database deployment identities", () => store.DatabaseVersions(reader, project.Id));
 Reject<UnauthorizedAccessException>("Reader cannot save", () => store.SaveLabeledTable(reader, project.Id, project.Revision, child));
 Reject<UnauthorizedAccessException>("Reader cannot export", () => store.ExportProject(reader, project.Id));
 Reject<UnauthorizedAccessException>("Reader cannot export project SQL", () => store.ExportProjectSql(reader, project.Id));
