@@ -1,55 +1,131 @@
 @using DbStudio.Core
 @inject IJSRuntime JS
 
-<section class="er-page" aria-label="项目 ER 关系图">
+<section class="er-page @(Compact ? "er-compact" : "")" aria-label="@(Compact ? "当前表关系图" : "项目 ER 关系图")">
+    @if (Compact)
+    {
+        <header class="er-compact-header">
+            <div><strong>当前表关系图</strong><span>@FocusedTable?.Label · @(IsDraft ? "预览未保存修改" : "基于当前已保存设计")</span></div>
+            <span>@model.Nodes.Count 张表 · @model.Edges.Count 条连线</span>
+        </header>
+    }
+    else
+    {
     <header class="er-header">
         <div>
             <span class="eyebrow">PROJECT RELATIONSHIPS</span>
             <h1>ER 关系图</h1>
-            <p>@Project.Name · 基于已保存设计 r@(Project.Revision)，点击数据表可进入结构设计。</p>
+            <p>@Project.Name · 基于已保存设计 r@(Project.Revision)，按模块和数据表逐步查看关联。</p>
         </div>
         <div class="er-summary" aria-label="关系统计">
-            <span><i class="logical-dot"></i>逻辑关系 <b>@model.LogicalCount</b></span>
-            <span><i class="physical-dot"></i>物理外键 <b>@model.PhysicalCount</b></span>
-            <span>当前显示 <b>@model.Nodes.Count</b> 张表</span>
+            <span><i class="logical-dot"></i>逻辑关系 <b>@Project.Tables.Sum(table => table.ForeignKeys.Count(key => key.IsLogical))</b></span>
+            <span><i class="physical-dot"></i>物理外键 <b>@Project.Tables.Sum(table => table.ForeignKeys.Count(key => !key.IsLogical))</b></span>
+            @if (module != "")
+            {
+                <span>当前显示 <b>@model.Nodes.Count</b> 张表 · <b>@model.Edges.Count</b> 条连线</span>
+            }
         </div>
     </header>
+    }
 
     <div class="er-toolbar">
+        @if (!Compact)
+        {
         <label>模块
-            <select @bind="module" @bind:after="Rebuild">
-                <option value="">全部模块</option>
-                @foreach (var item in ModuleOrdering.Names(Project))
+            <select @bind="module" @bind:after="ModuleChanged">
+                <option value="">选择模块</option>
+                <option value="*">全部模块</option>
+                @foreach (var item in ActiveModules)
                 {
                     <option value="@item">@item</option>
                 }
             </select>
         </label>
-        <label>关系类型
-            <select @bind="relationType" @bind:after="Rebuild">
-                <option value="all">全部关系</option>
-                <option value="logical">仅逻辑关系</option>
-                <option value="physical">仅物理外键</option>
-            </select>
-        </label>
-        <label class="er-search"><Icon Name="search" /><input aria-label="搜索 ER 图中的表或字段" placeholder="搜索表或字段…" @bind="search" @bind:event="oninput" @bind:after="Rebuild" /></label>
-        <label class="er-check"><input type="checkbox" @bind="onlyRelated" @bind:after="Rebuild" /> 仅显示有关联的表</label>
-        <label class="er-check"><input type="checkbox" @bind="showAllColumns" @bind:after="Rebuild" /> 展开全部字段</label>
+        }
+        @if (module != "")
+        {
+            @if (!Compact)
+            {
+            <label>聚焦表
+                <select @bind="focusTableId" @bind:after="FocusChanged">
+                    <option value="">点击画布中的表</option>
+                    @foreach (var item in FocusChoices)
+                    {
+                        <option value="@item.Id">@item.Label · @item.Name</option>
+                    }
+                </select>
+            </label>
+            }
+            @if (focusTableId != "")
+            {
+                <label>关联方向
+                    <select @bind="focusDirection" @bind:after="Rebuild">
+                        <option value="outgoing">本表引用</option>
+                        <option value="incoming">被其他表引用</option>
+                        <option value="both">双向</option>
+                    </select>
+                </label>
+            }
+            <label>关系类型
+                <select @bind="relationType" @bind:after="Rebuild">
+                    <option value="all">全部关系</option>
+                    <option value="logical">仅逻辑关系</option>
+                    <option value="physical">仅物理外键</option>
+                </select>
+            </label>
+            @if (!Compact)
+            {
+                <label class="er-search"><Icon Name="search" /><input aria-label="搜索 ER 图中的表或字段" placeholder="搜索表或字段…" @bind="search" @bind:event="oninput" @bind:after="SearchChanged" /></label>
+                <label class="er-check"><input type="checkbox" @bind="showAllRelations" @bind:after="ShowAllChanged" /> 显示全部连线</label>
+            }
+            <label class="er-check"><input type="checkbox" @bind="showTechnicalFields" @bind:after="Rebuild" /> 显示技术字段及关系</label>
+            @if (!Compact)
+            {
+                <label class="er-check"><input type="checkbox" @bind="onlyRelated" @bind:after="Rebuild" /> 仅关联表</label>
+            }
+            <label class="er-check"><input type="checkbox" @bind="showAllColumns" @bind:after="Rebuild" /> 全部字段</label>
+        }
         <div class="er-spacer"></div>
-        <div class="er-zoom" aria-label="画布缩放">
-            <button aria-label="缩小 ER 图" title="缩小" @onclick="() => Zoom(-0.15)">−</button>
-            <button @onclick="Fit"><Icon Name="arrows-angle-expand" /> 适应画布</button>
-            <button aria-label="放大 ER 图" title="放大" @onclick="() => Zoom(0.15)">＋</button>
+        @if (module != "")
+        {
+            @if (!Compact && FocusedTable is { } selected)
+            {
+                <button class="er-open-table" @onclick="() => TableRequested.InvokeAsync(selected)">打开 @selected.Label 的结构设计</button>
+            }
+            <div class="er-zoom" aria-label="画布缩放">
+                <button aria-label="缩小 ER 图" title="缩小" @onclick="() => Zoom(-0.15)">−</button>
+                <button @onclick="Fit"><Icon Name="arrows-angle-expand" /> 适应画布</button>
+                <button aria-label="放大 ER 图" title="放大" @onclick="() => Zoom(0.15)">＋</button>
+            </div>
+        }
+    </div>
+
+    @if (module == "" && !Compact)
+    {
+        <div class="er-module-overview">
+            <h2>@(Project.Tables.Count == 0 ? "项目中还没有数据表" : "先选择一个模块")</h2>
+            <p>@(Project.Tables.Count == 0 ? "请先创建数据表，再查看关系。" : "进入模块后，点击表卡片查看它与其他表的直接关联。")</p>
+            <div class="er-module-grid">
+                @foreach (var item in ActiveModules)
+                {
+                    var tables = Project.Tables.Where(table => table.Module == item).ToList();
+                    <button @onclick="() => SelectModule(item)">
+                        <strong>@item</strong>
+                        <span>@tables.Count 张表 · @tables.Sum(table => table.ForeignKeys.Count) 条出站关系</span>
+                    </button>
+                }
+            </div>
         </div>
-    </div>
+    }
+    else
+    {
+        <div class="er-legend">
+            <span><i class="legend-line physical"></i>物理外键</span>
+            <span><i class="legend-line logical"></i>逻辑关系</span>
+            <span class="er-hint">@(Compact ? "点击关联表进入结构设计 · 拖动画布移动" : "点击表卡片聚焦 · 按关联方向切换连线 · 拖动画布移动")</span>
+        </div>
 
-    <div class="er-legend">
-        <span><i class="legend-line physical"></i>物理外键</span>
-        <span><i class="legend-line logical"></i>逻辑关系</span>
-        <span class="er-hint">拖动画布移动 · 滚轮缩放 · 筛选时自动保留直接关联表</span>
-    </div>
-
-    <div class="er-viewport" @ref="viewport" data-diagram-width="@model.Width" data-diagram-height="@model.Height">
+        <div class="er-viewport" @ref="viewport" data-diagram-width="@model.Width" data-diagram-height="@model.Height">
         @if (model.Nodes.Count == 0)
         {
             <div class="er-empty">
@@ -60,6 +136,10 @@
         }
         else
         {
+            @if (Compact && model.Edges.Count == 0)
+            {
+                <div class="er-no-edges">@(HasFocusRelations ? "当前方向没有可见关系，可切换方向或显示技术字段。" : "当前表还没有关系，可在“表关系”中添加。")</div>
+            }
             <div class="er-stage" style="width:@Px(model.Width);height:@Px(model.Height)">
                 <svg class="er-links" width="@model.Width" height="@model.Height" viewBox="0 0 @model.Width @model.Height" aria-hidden="true">
                     <defs>
@@ -79,7 +159,7 @@
 
                 @foreach (var node in model.Nodes)
                 {
-                    <button class="er-node @(node.ContextOnly ? "context-node" : "")" style="left:@Px(node.X);top:@Px(node.Y);width:@Px(node.Width);height:@Px(node.Height)" @onclick="() => TableRequested.InvokeAsync(Project.Tables.Single(table => table.Id == node.TableId))" title="打开 @node.Schema.@node.Name">
+                    <button class="er-node @(node.ContextOnly ? "context-node" : "") @(focusTableId == node.TableId ? "focused-node" : "")" style="left:@Px(node.X);top:@Px(node.Y);width:@Px(node.Width);height:@Px(node.Height)" @onclick="() => NodeClicked(node.TableId)" title="@($"{(Compact ? "打开关联表" : "查看直接关联")} {node.Schema}.{node.Name}")">
                         <span class="er-node-header">
                             <span><b>@DisplayName(node)</b><small>@node.Schema.@node.Name</small></span>
                             <em>@node.Module</em>
@@ -107,35 +187,61 @@
             </div>
         }
     </div>
+    }
 </section>
 
 @code {
     [Parameter, EditorRequired] public DesignProject Project { get; set; } = default!;
     [Parameter] public EventCallback<TableDesign> TableRequested { get; set; }
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public string FocusTableId { get; set; } = "";
+    [Parameter] public bool IsDraft { get; set; }
 
     private ElementReference viewport;
     private RelationshipDiagramModel model = new([], [], 900, 520, 0, 0);
     private string module = "";
     private string relationType = "all";
     private string search = "";
+    private string focusTableId = "";
+    private string focusDirection = "outgoing";
+    private bool showAllRelations;
+    private bool showTechnicalFields;
     private bool onlyRelated = true;
     private bool showAllColumns;
     private int renderedRevision = -1;
+    private DesignProject? renderedProject;
+    private bool compactInitialized;
     private bool fitAfterRender = true;
+    private IEnumerable<string> ActiveModules => ModuleOrdering.Names(Project).Where(name => Project.Tables.Any(table => table.Module == name));
+    private IEnumerable<TableDesign> FocusChoices => Project.Tables.Where(table => module == "*" || table.Module == module || table.Id == focusTableId)
+        .OrderBy(table => table.Name, StringComparer.OrdinalIgnoreCase);
+    private TableDesign? FocusedTable => Project.Tables.FirstOrDefault(table => table.Id == focusTableId);
+    private bool HasFocusRelations => FocusedTable?.ForeignKeys.Count > 0
+        || Project.Tables.Any(table => table.ForeignKeys.Any(key => key.TargetTableId == focusTableId));
 
     protected override void OnParametersSet()
     {
-        if (renderedRevision == Project.Revision)
+        if (Compact && !compactInitialized)
+        {
+            module = "*";
+            focusTableId = FocusTableId;
+            focusDirection = FocusedTable?.ForeignKeys.Any(key => Project.Tables.Any(table => table.Id == key.TargetTableId)
+                && (showTechnicalFields || !RelationshipDiagramLayout.IsTechnicalRelation(Project, key))) == true
+                ? "outgoing" : "incoming";
+            compactInitialized = true;
+        }
+        if (renderedRevision == Project.Revision && ReferenceEquals(renderedProject, Project))
         {
             return;
         }
         renderedRevision = Project.Revision;
+        renderedProject = Project;
         Rebuild();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (model.Nodes.Count == 0)
+        if (module == "" || model.Nodes.Count == 0)
         {
             return;
         }
@@ -145,8 +251,71 @@
 
     private void Rebuild()
     {
-        model = RelationshipDiagramLayout.Build(Project, module, search, relationType, onlyRelated, showAllColumns);
+        model = module == "" ? new([], [], 900, 520, 0, 0)
+            : RelationshipDiagramLayout.Build(Project, module == "*" ? "" : module, search, relationType,
+                onlyRelated, showAllColumns, focusTableId, showAllRelations, showTechnicalFields, focusDirection);
         fitAfterRender = true;
+    }
+
+    private void SelectModule(string name)
+    {
+        module = name;
+        ModuleChanged();
+    }
+
+    private void ModuleChanged()
+    {
+        focusTableId = "";
+        search = "";
+        showAllRelations = false;
+        Rebuild();
+    }
+
+    private void SearchChanged()
+    {
+        focusTableId = "";
+        Rebuild();
+    }
+
+    private void ShowAllChanged()
+    {
+        if (showAllRelations)
+        {
+            focusTableId = "";
+        }
+        Rebuild();
+    }
+
+    private void FocusTable(string tableId)
+    {
+        focusTableId = tableId;
+        showAllRelations = false;
+        FocusChanged();
+    }
+
+    private async Task NodeClicked(string tableId)
+    {
+        if (Compact)
+        {
+            if (tableId != focusTableId)
+            {
+                await TableRequested.InvokeAsync(Project.Tables.Single(table => table.Id == tableId));
+            }
+            return;
+        }
+        FocusTable(tableId);
+    }
+
+    private void FocusChanged()
+    {
+        var selected = FocusedTable;
+        focusDirection = selected != null && !selected.ForeignKeys.Any(key => showTechnicalFields || !RelationshipDiagramLayout.IsTechnicalRelation(Project, key))
+            ? "incoming" : "outgoing";
+        if (selected != null)
+        {
+            showAllRelations = false;
+        }
+        Rebuild();
     }
 
     private async Task Zoom(double delta) => await JS.InvokeVoidAsync("studio.erDiagramZoom", viewport, delta);

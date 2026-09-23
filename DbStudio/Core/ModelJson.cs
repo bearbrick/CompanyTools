@@ -28,6 +28,7 @@ public static class ModelJson
     /// </summary>
     public static DesignProject NormalizeImport(DesignProject project)
     {
+        project.TechnicalFields ??= [];
         foreach (var table in project.Tables)
         {
             table.DataCategory = TableDataCategories.Normalize(table.DataCategory);

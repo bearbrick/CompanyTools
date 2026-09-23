@@ -20,6 +20,7 @@ public partial class Home : IDisposable
     List<DesignProject> projects = [];
     DesignProject? project;
     TableDesign? table;
+    DesignProject? relationshipPreview;
     string search = "";
     string fieldSearch = "";
     string tab = "fields";
@@ -208,6 +209,10 @@ public partial class Home : IDisposable
         }
 
         table = ModelJson.Clone(item);
+        if (tab == "diagram")
+        {
+            relationshipPreview = WorkingProject();
+        }
         collapsed.Remove(item.Module);
         dirty = false;
         selected.Clear();
@@ -295,6 +300,10 @@ public partial class Home : IDisposable
             if (tab == "sql" && table != null)
             {
                 GenerateSql();
+            }
+            if (tab == "diagram" && table != null)
+            {
+                relationshipPreview = WorkingProject();
             }
         });
     }

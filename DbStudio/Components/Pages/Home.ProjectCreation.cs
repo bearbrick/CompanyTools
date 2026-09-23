@@ -49,6 +49,10 @@ public partial class Home
         {
             GenerateSql();
         }
+        else if (value == "diagram" && project != null && table != null)
+        {
+            relationshipPreview = WorkingProject();
+        }
     }
 
     /// <summary>

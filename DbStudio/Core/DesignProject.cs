@@ -40,4 +40,7 @@ public class DesignProject
 
     /// <summary>按显示顺序保存的模块名称；数组位置即排序序号，允许空模块。</summary>
     public List<string> Modules { get; set; } = [];
+
+    /// <summary>ER 图中可选择隐藏的技术字段名，在项目内按名称匹配。</summary>
+    public List<string> TechnicalFields { get; set; } = ["CreateID", "ModifyID"];
 }

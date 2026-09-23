@@ -249,12 +249,20 @@ Reject<UnauthorizedAccessException>("Cross-project export rejected", () => store
 Reject<UnauthorizedAccessException>("Cross-project SQL export rejected", () => store.ExportProjectSql(workerA, projectB.Id));
 Reject<UnauthorizedAccessException>("Cross-project DDL rejected", () => store.Ddl(workerA, projectB, parent));
 Reject<UnauthorizedAccessException>("Cross-project rename rejected", () => store.UpdateProject(workerA, projectB.Id, projectB.Revision, "越权", ""));
+Reject<UnauthorizedAccessException>("Cross-project technical fields rejected", () => store.SaveTechnicalFields(workerA, projectB.Id, projectB.Revision, ["CreateID"]));
 Reject<UnauthorizedAccessException>("Cross-project members rejected", () => store.ProjectMembers(workerA, projectB.Id));
 Reject<UnauthorizedAccessException>("Cross-project audit rejected", () => store.Audit(workerA, projectB.Id));
 Reject<UnauthorizedAccessException>("Global audit rejected for ordinary member", () => store.Audit(workerA));
 projectA = store.UpdateProject(workerA, projectA.Id, projectA.Revision, "甲项目新版", "修改说明");
 Check("Project details persist", store.Projects(workerA).Single().Name == "甲项目新版" && store.Projects(workerA).Single().Description == "修改说明");
 Reject<InvalidOperationException>("Project details stale revision rejected", () => store.UpdateProject(workerA, projectA.Id, projectA.Revision - 1, "旧版本", ""));
+Check("New projects start with common technical fields", projectA.TechnicalFields.SequenceEqual(["CreateID", "ModifyID"]));
+var revisionBeforeTechnical = projectA.Revision;
+projectA = store.SaveTechnicalFields(workerA, projectA.Id, projectA.Revision, ["CreateID", "UpdatedBy"]);
+Check("Technical field settings persist as project design", projectA.Revision == revisionBeforeTechnical + 1
+    && store.Projects(workerA).Single().TechnicalFields.SequenceEqual(["CreateID", "UpdatedBy"]));
+Reject<InvalidOperationException>("Duplicate technical names rejected", () => store.SaveTechnicalFields(workerA, projectA.Id, projectA.Revision, ["CreateID", "createid"]));
+Reject<InvalidOperationException>("Stale technical field settings rejected", () => store.SaveTechnicalFields(workerA, projectA.Id, revisionBeforeTechnical, ["OtherId"]));
 projectA = store.SaveModule(workerA, projectA.Id, projectA.Revision, null, "采购");
 Check("Empty module persists", store.Projects(workerA).Single().Modules.SequenceEqual(["采购"]));
 var moduleTable = ModelJson.Clone(parent);

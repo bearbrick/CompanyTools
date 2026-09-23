@@ -139,6 +139,7 @@
                 <button class="@(tab == "checks" ? "active" : "")" @onclick='() => OpenTab("checks")'>检查约束 <span>@table.Checks.Count</span></button>
                 @if (CanExport) { <button class="@(tab == "sql" ? "active" : "")" @onclick='() => OpenTab("sql")'><Icon Name="code-slash" /> SQL 预览</button> }
                 <button class="@(tab == "history" ? "active" : "")" @onclick='() => OpenTab("history")'>变更记录</button>
+                <button class="@(tab == "diagram" ? "active" : "")" @onclick='() => OpenTab("diagram")'><Icon Name="diagram-3" /> 关系图</button>
             </nav>
             @if (!CanDesign) { <div class="readonly-note"><Icon Name="lock" /> 当前为只读权限，可浏览项目和结构定义。</div> }
             @if (tab == "fields")
@@ -201,6 +202,11 @@
             @if (tab == "history")
             {
                 <ProjectVersionHistory @key="(project.Id, project.Revision, table.Id)" Project="project" Principal="principal" TableId="table.Id" CanRestore="CanDesign" Restored="VersionRestored" />
+            }
+            @if (tab == "diagram" && relationshipPreview != null)
+            {
+                <ProjectRelationshipDiagram @key="relationshipPreview" Project="relationshipPreview" Compact="true"
+                                            FocusTableId="@table.Id" IsDraft="dirty" TableRequested="ChooseTable" />
             }
         }
         else

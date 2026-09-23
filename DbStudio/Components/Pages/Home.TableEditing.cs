@@ -28,6 +28,10 @@ public partial class Home
         project = Store.SaveTable(principal, project.Id, previousRevision, table);
         projects[projects.FindIndex(candidate => candidate.Id == project.Id)] = project;
         table = ModelJson.Clone(project.Tables.First(candidate => candidate.Id == table.Id));
+        if (tab == "diagram")
+        {
+            relationshipPreview = WorkingProject();
+        }
         dirty = false;
         message = project.Revision == previousRevision
             ? "内容未变化，无需保存 · r" + project.Revision

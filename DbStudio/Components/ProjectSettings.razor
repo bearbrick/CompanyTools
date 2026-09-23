@@ -6,6 +6,7 @@
 <div class="settings-tabs" role="tablist" aria-label="项目设置">
     <button class="@(section == "info" ? "active" : "")" @onclick='() => section = "info"'>基本信息</button>
     <button class="@(section == "modules" ? "active" : "")" @onclick='() => section = "modules"'>模块管理</button>
+    <button class="@(section == "technical" ? "active" : "")" @onclick='() => section = "technical"'>技术字段</button>
     @if (manage)
     {
         <button class="@(section == "members" ? "active" : "")" @onclick='() => section = "members"'>项目成员</button>
@@ -27,6 +28,16 @@
 @if (section == "modules")
 {
     <ProjectModules Project="Project" Principal="Principal" CanEdit="design" Saved="Saved" />
+}
+@if (section == "technical")
+{
+    var impact = TechnicalImpact;
+    <p class="muted">按字段名在本项目所有表中匹配。ER 图默认隐藏这些字段，以及使用这些字段建立的关系；不修改表结构或数据库外键。</p>
+    <fieldset disabled="@(!design)">
+        <label>技术字段名（每行一个，不区分大小写）<textarea class="mono" rows="7" aria-label="技术字段名" @bind="technicalFieldsText" @bind:event="oninput" placeholder="CreateID&#10;ModifyID"></textarea></label>
+    </fieldset>
+    <div class="settings-facts"><span>匹配 @impact.Columns 个字段</span><span>屏蔽 @impact.Relations 条关系</span><span>勾选“显示技术字段及关系”可临时查看</span></div>
+    @if (design) { <div class="modal-footer"><span class="muted">这里保存后，项目 ER 图和表内关系图都会使用新配置。</span><button class="primary" @onclick="SaveTechnicalFields">保存技术字段</button></div> }
 }
 @if (section == "members" && manage)
 {
@@ -63,7 +74,7 @@
     [Parameter, EditorRequired] public System.Security.Claims.ClaimsPrincipal Principal { get; set; } = default!;
     [Parameter] public EventCallback<DesignProject> Saved { get; set; }
     [Parameter] public string InitialSection { get; set; } = "info";
-    private string section = "info", name = "", description = "", problem = "", notice = "";
+    private string section = "info", name = "", description = "", technicalFieldsText = "", problem = "", notice = "";
     private string memberLogin = "", memberAccess = "1", shareName = "结构评审", shareDays = "30", shareUrl = "";
     private bool manage, design, export;
     private List<ProjectMember> members = [];
@@ -72,6 +83,19 @@
     private static readonly List<SelectOption> ExpiryOptions = [new("7", "7 天"), new("30", "30 天"), new("90", "90 天"), new("0", "长期有效")];
     private string PublicBase => (Configuration["Studio:PublicBaseUrl"] ?? Navigation.BaseUri).TrimEnd('/');
     private bool LocalOnly => Uri.TryCreate(PublicBase, UriKind.Absolute, out var uri) && uri.IsLoopback;
+    private List<string> DraftTechnicalNames => technicalFieldsText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+        .Select(name => name.Trim()).Where(name => name != "").ToList();
+    private (int Columns, int Relations) TechnicalImpact
+    {
+        get
+        {
+            var names = DraftTechnicalNames.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return (Project.Tables.Sum(table => table.Columns.Count(column => names.Contains(column.Name))),
+                Project.Tables.Sum(table => table.ForeignKeys.Count(key =>
+                    SqlServerDdl.Names(key.Columns).Any(names.Contains)
+                    || SqlServerDdl.Names(key.TargetColumns).Any(names.Contains))));
+        }
+    }
 
     /// <summary>打开时读取服务端当前授权；提交操作由服务再次授权。</summary>
     protected override void OnInitialized()
@@ -79,6 +103,7 @@
         section = InitialSection;
         name = Project.Name;
         description = Project.Description;
+        technicalFieldsText = string.Join(Environment.NewLine, Project.TechnicalFields ?? []);
         Handle(() =>
         {
             var access = Store.AccessTo(Principal, Project.Id);
@@ -105,6 +130,14 @@
         DesignProject? updated = null;
         Handle(() => updated = Store.UpdateProject(Principal, Project.Id, Project.Revision, name, description));
         if (updated != null) { await Saved.InvokeAsync(updated); notice = "项目信息已保存"; }
+    }
+
+    /// <summary>单独保存 ER 图技术字段配置，项目服务负责校验和版本冲突检测。</summary>
+    private async Task SaveTechnicalFields()
+    {
+        DesignProject? updated = null;
+        Handle(() => updated = Store.SaveTechnicalFields(Principal, Project.Id, Project.Revision, DraftTechnicalNames));
+        if (updated != null) { await Saved.InvokeAsync(updated); notice = "技术字段已保存"; }
     }
 
     private void SaveMember() => Handle(() => { Store.SaveProjectMember(Principal, Project.Id, memberLogin, (ProjectAccess)int.Parse(memberAccess)); ReloadLists(); notice = "成员权限已保存"; });

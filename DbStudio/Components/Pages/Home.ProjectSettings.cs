@@ -51,6 +51,7 @@ public partial class Home
         project = updated;
         projects[projects.FindIndex(p => p.Id == updated.Id)] = updated;
         table = ModelJson.Clone(updated.Tables.FirstOrDefault(t => t.Id == table?.Id));
+        if (tab == "diagram" && table != null) { relationshipPreview = WorkingProject(); }
         if (view == "design" && table == null) { ResetProjectHome(); }
         else if (view == "overview") { LoadProjectActivity(); }
         LoadProjectAccess();
