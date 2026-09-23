@@ -71,7 +71,8 @@
     .design-heading + .tabs { padding: 0 12px; gap: 15px; }
     .grid-toolbar { min-height: 48px; }
 }
-.project-settings-entry{color:#dbe7ff!important;white-space:nowrap;background:rgba(255,255,255,.08)!important;border:1px solid rgba(255,255,255,.15)!important;border-radius:5px;padding:6px 10px!important;font-size:12px!important}
+.project-settings-entry{height:38px;min-height:38px;color:#dbe7ff!important;white-space:nowrap;background:rgba(255,255,255,.08)!important;border:1px solid rgba(255,255,255,.15)!important;border-radius:5px;padding:0 11px!important;font-size:12px!important;gap:8px}
+.project-settings-entry .icon{width:16px;height:16px;filter:brightness(0) invert(1)}
 .module-manage-entry{margin:0 20px 10px;font-size:12px;text-align:left}
 .settings-tabs{display:flex;gap:8px;border-bottom:1px solid #e1e8f2;margin-bottom:18px;padding-bottom:8px;flex-wrap:wrap}
 .settings-tabs button{border:0;background:transparent;padding:8px 13px;border-radius:5px;color:#617694;font-size:13px;cursor:pointer}
