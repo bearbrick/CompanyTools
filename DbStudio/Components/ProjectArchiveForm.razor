@@ -10,7 +10,7 @@
     }
     <fieldset disabled="@busy" class="archive-fields">
         <div class="form-grid">
-            <label>文档编号<input @bind="options.DocumentNumber" maxlength="80" placeholder="例如 DB-ARCH-202609-001" /></label>
+            <label>文档编号<input @bind="options.DocumentNumber" maxlength="80" /></label>
             <label>文档版本<input @bind="options.Version" maxlength="30" required /></label>
             <label>数据库名称<input @bind="options.DatabaseName" maxlength="128" placeholder="可选，未填写时保留空栏" /></label>
             <label>SQL Server 版本<input @bind="options.DatabaseVersion" maxlength="80" placeholder="可选，填写实际产品版本" /></label>
@@ -52,6 +52,7 @@
 
     protected override void OnInitialized()
     {
+        options.DocumentNumber = $"DB-ARCH-{DateTimeOffset.Now:yyyyMM}-{Project.Revision:000}";
         options.PreparedBy = PreparedBy;
     }
 
