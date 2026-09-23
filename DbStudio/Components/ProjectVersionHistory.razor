@@ -11,7 +11,7 @@
     @if (summary != null)
     {
         <div class="version-cards">
-            <article><span>当前设计</span><strong>r@summary.CurrentRevision</strong><small>每次有效保存 +1</small></article>
+            <article><span>当前设计</span><strong>r@(summary.CurrentRevision)</strong><small>每次有效保存 +1</small></article>
             <article><span>最新发布</span><strong>@(summary.LatestReleaseVersion == 0 ? "尚未发布" : $"V{summary.LatestReleaseVersion}")</strong><small>@(summary.LatestReleaseRevision is int revision ? $"来自设计 r{revision}" : "同步并通过整库校验后生成")</small></article>
             <article><span>发布差距</span><strong>@PendingText</strong><small>@(IsPublished ? "当前设计已有发布快照" : "当前设计还没有发布为 V")</small></article>
         </div>
@@ -24,7 +24,7 @@
                     {
                         var connections = databases.Where(item => item.Environment == environment.Id).ToList();
                         <article class="environment-lane @(environment.Id == DatabaseEnvironments.Production ? "production" : "")">
-                            <header><span>第 @(environment.Order / 10) 级</span><h3>@environment.Name</h3>@if (EnvironmentAtLatest(connections)) { <em>已到 V@summary.LatestReleaseVersion</em> }</header>
+                            <header><span>第 @(environment.Order / 10) 级</span><h3>@environment.Name</h3>@if (EnvironmentAtLatest(connections)) { <em>已到 V@(summary.LatestReleaseVersion)</em> }</header>
                             @if (connections.Count == 0)
                             {
                                 <p class="muted">尚未配置数据库连接</p>
@@ -45,8 +45,8 @@
                 @foreach (var entry in summary.Revisions)
                 {
                     <button class="revision-row @(selectedRevision == entry.Revision ? "active" : "")" @onclick="() => SelectRevision(entry.Revision)">
-                        <span class="revision-number">r@entry.Revision</span><span><b>@entry.Action</b><small>@LocalTime(entry.Time) · @(entry.Actor == "" ? "系统" : entry.Actor)</small></span>
-                        @if (entry.ReleaseVersion is int version) { <em>V@version</em> }
+                        <span class="revision-number">r@(entry.Revision)</span><span><b>@entry.Action</b><small>@LocalTime(entry.Time) · @(entry.Actor == "" ? "系统" : entry.Actor)</small></span>
+                        @if (entry.ReleaseVersion is int version) { <em>V@(version)</em> }
                     </button>
                 }
                 @if (summary.Revisions.Count < summary.TotalRevisionCount && revisionLimit < 2_000)
@@ -59,8 +59,8 @@
                 }
             </section>
             <section class="version-panel diff-panel">
-                <div class="section-title"><div><h2>r@selectedRevision → r@targetRevision</h2><p class="muted">@(TableId == null ? "项目整体差异" : "仅显示当前数据表差异")</p></div>
-                    <label class="target-revision">对比到<select @bind="targetRevision" @bind:after="LoadDiff">@foreach (var entry in summary.Revisions) { <option value="@entry.Revision">r@entry.Revision@(entry.Revision == summary.CurrentRevision ? "（当前）" : "")</option> }</select></label>
+                <div class="section-title"><div><h2>r@(selectedRevision) → r@(targetRevision)</h2><p class="muted">@(TableId == null ? "项目整体差异" : "仅显示当前数据表差异")</p></div>
+                    <label class="target-revision">对比到<select @bind="targetRevision" @bind:after="LoadDiff">@foreach (var entry in summary.Revisions) { <option value="@entry.Revision">@($"r{entry.Revision}{(entry.Revision == summary.CurrentRevision ? "（当前）" : "")}")</option> }</select></label>
                     @if (selectedRevision != Project.Revision)
                     {
                         <button class="danger" @onclick="RequestRestore" disabled="@(!CanRestore)">@(TableId == null ? "恢复整个项目" : "恢复这张表")</button>
@@ -68,7 +68,7 @@
                 </div>
                 @if (confirming)
                 {
-                    <div class="restore-confirm" role="alert"><b>确认从 r@selectedRevision 恢复？</b><p>当前 r@Project.Revision 不会被覆盖；系统会把恢复结果保存为新修订。数据库不会自动变更。</p><button @onclick="() => confirming = false">取消</button><button class="primary" @onclick="Restore">确认恢复</button></div>
+                    <div class="restore-confirm" role="alert"><b>确认从 r@(selectedRevision) 恢复？</b><p>当前 r@(Project.Revision) 不会被覆盖；系统会把恢复结果保存为新修订。数据库不会自动变更。</p><button @onclick="() => confirming = false">取消</button><button class="primary" @onclick="Restore">确认恢复</button></div>
                 }
                 @if (diff == null) { <p class="muted">正在读取差异…</p> }
                 else if (diff.Items.Count == 0) { <div class="empty-state">与当前范围没有差异</div> }
